@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_FROZEN: "1"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      # pyscard has no manylinux wheels: it is built from source here.
+      - run: sudo apt-get update && sudo apt-get install -y swig libpcsclite-dev
+      - run: uv sync
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy src
+
+  test:
+    # No reader is ever attached to a runner: the suite must pass without one.
+    #
+    # Floor and current on Windows, the primary platform for ACR122U users, plus
+    # both ends on Linux and a macOS leg. pyscard ships wheels for every one of
+    # these except Linux, which has no manylinux wheels and builds from source.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, python: "3.10" }
+          - { os: windows-latest, python: "3.13" }
+          - { os: ubuntu-latest, python: "3.10" }
+          - { os: ubuntu-latest, python: "3.13" }
+          - { os: macos-latest, python: "3.13" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python }}
+      - name: Install the PC/SC build prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y swig libpcsclite-dev
+      - run: uv sync --python ${{ matrix.python }}
+      - run: uv run --python ${{ matrix.python }} pytest
+
+  package:
+    # Build the artifact and run the suite against the *installed wheel*, so a
+    # missing subpackage or a py.typed left out of the build fails here rather than
+    # after publishing.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: sudo apt-get update && sudo apt-get install -y swig libpcsclite-dev
+      - name: Build sdist and wheel
+        run: uv build
+      - name: Check the PyPI page renders
+        run: uvx twine check --strict dist/*
+      - name: Confirm py.typed made it into the wheel
+        run: unzip -l dist/*.whl | grep -q 'simple_nfc_tag/py.typed'
+      - name: Install the wheel into a clean environment
+        run: |
+          uv venv .wheel-env
+          uv pip install --python .wheel-env/bin/python dist/*.whl pytest
+      - name: Run the suite against the installed wheel
+        # From tests/ so the source tree is not on sys.path and the import can only
+        # resolve to the installed distribution.
+        run: cd tests && ../.wheel-env/bin/python -m pytest -q -p no:cacheprovider .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/

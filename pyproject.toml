@@ -1,0 +1,89 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "simple-nfc-tag"
+dynamic = ["version"]
+description = "Read and write data to NFC tags (MIFARE Classic, Ultralight, NTAG) over PC/SC readers"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Nicolas Gutierrez", email = "contacto@nicolasgutierrez.uy" }]
+keywords = ["nfc", "rfid", "mifare", "ntag", "ultralight", "acr122u", "pcsc", "smartcard"]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Hardware :: Hardware Drivers",
+    "Typing :: Typed",
+]
+dependencies = ["pyscard>=2.0,<3"]
+
+[project.optional-dependencies]
+# Reserved so the future NDEF codec is an additive change, not a breaking one.
+ndef = []
+
+[dependency-groups]
+dev = ["pytest>=7", "ruff", "mypy", "twine>=5"]
+
+[project.urls]
+Homepage = "https://github.com/nicolasgutierrezdev/simple-nfc-tag"
+Repository = "https://github.com/nicolasgutierrezdev/simple-nfc-tag"
+Issues = "https://github.com/nicolasgutierrezdev/simple-nfc-tag/issues"
+Changelog = "https://github.com/nicolasgutierrezdev/simple-nfc-tag/blob/main/CHANGELOG.md"
+
+[tool.hatch.version]
+path = "src/simple_nfc_tag/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/simple_nfc_tag"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/README.md",
+    "/LICENSE",
+    "/CHANGELOG.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers --strict-config"
+markers = [
+    "hardware: requires a physical PC/SC reader; never run in CI",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+# Markdown is documentation: ruff format rewrites the code blocks inside it and
+# flattens comment alignment that is there on purpose.
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "ANN", "PT"]
+ignore = [
+    "ANN401",  # Any is deliberate in the codec boundary
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN", "S101"]
+"examples/**" = ["ANN", "T201"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src"]
+strict = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ["smartcard.*"]
+ignore_missing_imports = true

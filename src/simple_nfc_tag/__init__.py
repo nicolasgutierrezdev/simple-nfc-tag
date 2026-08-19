@@ -1,0 +1,126 @@
+"""simple-nfc-tag: a tag-agnostic NFC data storage library built on PC/SC.
+
+Store and retrieve your own data on MIFARE Classic, Ultralight and NTAG21x tags
+through any PC/SC reader, without hand-writing APDUs or caring which chip is on the
+tag.
+
+    >>> import simple_nfc_tag as snt                       # doctest: +SKIP
+    >>> with snt.connect() as reader:                      # doctest: +SKIP
+    ...     tag = reader.wait_for_tag(timeout=5)
+    ...     tag.write(["ABC123", 42])
+    ...     tag.read()
+    ['ABC123', 42]
+
+See the README for the architecture and the wire format.
+"""
+
+from __future__ import annotations
+
+from simple_nfc_tag.cards import Card, identify
+from simple_nfc_tag.codecs import (
+    I8,
+    I16,
+    I32,
+    I64,
+    U8,
+    U16,
+    U32,
+    U64,
+    Codec,
+    codec_for,
+    known_codecs,
+    register_codec,
+)
+from simple_nfc_tag.exceptions import (
+    ApduError,
+    AuthenticationError,
+    CardError,
+    CardFull,
+    CardRemoved,
+    DecodeError,
+    FormatError,
+    NdefNotSupported,
+    NfcError,
+    NoCardPresent,
+    NoReaderFound,
+    ReaderError,
+    ReaderNotSupported,
+    UnknownFormat,
+    UnsupportedCard,
+    WriteVerificationError,
+)
+from simple_nfc_tag.keys import (
+    FACTORY_KEY,
+    WELL_KNOWN_KEYS,
+    DefaultKeyProvider,
+    KeyProvider,
+    KeyType,
+    StaticKeyProvider,
+)
+from simple_nfc_tag.monitor import Monitor
+from simple_nfc_tag.readers import ACR122U, PCSCReader, Reader, list_readers, open_reader
+
+__version__ = "0.1.0.dev0"
+
+
+def connect(name: str | None = None) -> Reader:
+    """Open the reader and return it, ready for tag access.
+
+    The driver is chosen from the PC/SC reader name, so an ACR122U gets its PN532
+    passthrough and buzzer control while anything else falls back to standard PC/SC.
+
+    :param name: a substring of the PC/SC reader name. Omit to take the first reader
+        attached.
+
+    >>> with connect() as reader:                     # doctest: +SKIP
+    ...     tag = reader.wait_for_tag(timeout=5)
+    """
+    return open_reader(name).connect()
+
+
+__all__ = [
+    "ACR122U",
+    "FACTORY_KEY",
+    "I8",
+    "I16",
+    "I32",
+    "I64",
+    "U8",
+    "U16",
+    "U32",
+    "U64",
+    "WELL_KNOWN_KEYS",
+    "ApduError",
+    "AuthenticationError",
+    "Card",
+    "CardError",
+    "CardFull",
+    "CardRemoved",
+    "Codec",
+    "DecodeError",
+    "DefaultKeyProvider",
+    "FormatError",
+    "KeyProvider",
+    "KeyType",
+    "Monitor",
+    "NdefNotSupported",
+    "NfcError",
+    "NoCardPresent",
+    "NoReaderFound",
+    "PCSCReader",
+    "Reader",
+    "ReaderError",
+    "ReaderNotSupported",
+    "StaticKeyProvider",
+    "UnknownFormat",
+    "UnsupportedCard",
+    "WriteVerificationError",
+    "__version__",
+    "codec_for",
+    "connect",
+    "identify",
+    "known_codecs",
+    "list_readers",
+    "open_reader",
+    "register_codec",
+]
