@@ -4,18 +4,51 @@ from __future__ import annotations
 
 import pytest
 
+from simple_nfc_tag.access_bits import (
+    DEAD_DATA,
+    READ_ONLY_TRAILER,
+    TRANSPORT_DATA,
+    TRANSPORT_TRAILER,
+    encode_access_bits,
+    first_dead_data_block,
+)
 from simple_nfc_tag.cards import identify
 from simple_nfc_tag.cards.mifare_classic import Classic1K, Classic4K, MifareClassic
-from simple_nfc_tag.exceptions import AuthenticationError, CardFull
+from simple_nfc_tag.exceptions import (
+    ApduError,
+    AuthenticationError,
+    CardFull,
+    WriteVerificationError,
+)
 from simple_nfc_tag.keys import FACTORY_KEY, KeyType, StaticKeyProvider
 from simple_nfc_tag.readers.fake import FakeClassic1K, FakeClassic4K, FakeReader
 
 CUSTOM_KEY = bytes.fromhex("A0A1A2A3A4A5")
+NEW_KEY_A = bytes.fromhex("A1A2A3A4A5A6")
+NEW_KEY_B = bytes.fromhex("B1B2B3B4B5B6")
+
+#: The transport access condition write_sector_trailer/set_sector_keys default to.
+OPEN_ACCESS = (TRANSPORT_DATA, TRANSPORT_DATA, TRANSPORT_DATA, TRANSPORT_TRAILER)
 
 
 def card_for(image=FakeClassic1K, **image_kwargs):
     reader = FakeReader(image(**image_kwargs))
     return identify(reader), reader
+
+
+def corrupt_sector(image, sector, *, key_a, key_b, access):
+    """Force one sector's trailer to an arbitrary state by writing raw bytes.
+
+    Silicon reaches these states through a trailer write; a test reaches them by
+    editing memory directly, which is enough because every later read and write
+    decodes the access bits straight back out of it.
+    """
+    trailer = (sector + 1) * image.blocks_per_sector - 1
+    start = trailer * image.block_size
+    image.memory[start : start + 6] = key_a
+    image.memory[start + 6 : start + 9] = encode_access_bits(*access)
+    image.memory[start + 9] = 0x00
+    image.memory[start + 10 : start + 16] = key_b
 
 
 def auths(reader):
@@ -211,3 +244,148 @@ class TestReadWrite:
         card, _ = card_for()
         with pytest.raises(ValueError, match="16 bytes"):
             card.write_block(4, b"short")
+
+
+class TestTrailerGeometry:
+    def test_1k_trailer_blocks(self):
+        card, _ = card_for(FakeClassic1K)
+        assert card.trailer_block(0) == 3
+        assert card.trailer_block(1) == 7
+        assert card.trailer_block(15) == 63
+        assert card.sector_count == 16
+
+    def test_4k_trailers_in_both_sector_sizes(self):
+        card, _ = card_for(FakeClassic4K)
+        assert card.trailer_block(0) == 3
+        assert card.trailer_block(31) == 127
+        # First sixteen-block sector: blocks 128-143, trailer at 143.
+        assert card.trailer_block(32) == 143
+        assert card.sector_count == 40
+
+
+class TestReadTrailer:
+    def test_reads_the_transport_access_bits(self):
+        card, _ = card_for()
+        trailer = card.read_sector_trailer(2)
+        assert trailer.access == OPEN_ACCESS
+        assert trailer.gpb == 0x69
+
+    def test_key_a_reads_back_as_zeros(self):
+        # The honest field is the access bits, never the keys.
+        card, _ = card_for()
+        assert card.read_sector_trailer(2).key_a == bytes(6)
+
+    def test_a_corrupted_trailer_is_reported_not_guessed(self):
+        image = FakeClassic1K()
+        # An access-byte block whose redundant copies disagree: decode must refuse.
+        image.memory[7 * 16 + 6 : 7 * 16 + 9] = bytes.fromhex("000000")
+        card = identify(FakeReader(image))
+        card.keys = StaticKeyProvider(key=FACTORY_KEY)
+        with pytest.raises(ValueError, match="inconsistent"):
+            card.read_sector_trailer(1)
+
+
+class TestWriteTrailer:
+    def test_the_keyword_flag_is_required(self):
+        card, reader = card_for()
+        with pytest.raises(ValueError, match="brick"):
+            card.write_sector_trailer(2, NEW_KEY_A, NEW_KEY_B, OPEN_ACCESS)
+        # Nothing was written.
+        assert not any(apdu[:2] == b"\xff\xd6" for apdu in reader.sent)
+
+    def test_writes_the_expected_sixteen_bytes(self):
+        image = FakeClassic1K()
+        card = identify(FakeReader(image))
+        card.set_sector_keys(2, NEW_KEY_A, NEW_KEY_B, i_understand_this_can_brick_the_sector=True)
+
+        trailer = bytes(image.memory[11 * 16 : 12 * 16])
+        assert trailer[:6] == NEW_KEY_A
+        assert trailer[6:9] == encode_access_bits(*OPEN_ACCESS)
+        assert trailer[10:16] == NEW_KEY_B
+        assert 11 in image.writes
+
+    def test_the_new_key_opens_the_sector_afterwards(self):
+        image = FakeClassic1K()
+        card = identify(FakeReader(image))
+        card.set_sector_keys(2, NEW_KEY_A, NEW_KEY_B, i_understand_this_can_brick_the_sector=True)
+
+        card.keys = StaticKeyProvider(key=NEW_KEY_A, key_type=KeyType.A)
+        card.write_bytes(48, b"written under the new key")
+        assert card.read_bytes(48, 25) == b"written under the new key"
+
+    def test_a_dead_data_block_is_refused(self):
+        card, reader = card_for()
+        with pytest.raises(ValueError, match="brick it"):
+            card.write_sector_trailer(
+                2,
+                NEW_KEY_A,
+                NEW_KEY_B,
+                (DEAD_DATA, TRANSPORT_DATA, TRANSPORT_DATA, TRANSPORT_TRAILER),
+                i_understand_this_can_brick_the_sector=True,
+            )
+        assert not any(apdu[:2] == b"\xff\xd6" for apdu in reader.sent)
+
+    def test_a_frozen_trailer_is_allowed_with_the_flag(self):
+        # Locking the keys forever is a legitimate read-only configuration.
+        image = FakeClassic1K()
+        card = identify(FakeReader(image))
+        card.write_sector_trailer(
+            2,
+            NEW_KEY_A,
+            NEW_KEY_B,
+            (TRANSPORT_DATA, TRANSPORT_DATA, TRANSPORT_DATA, READ_ONLY_TRAILER),
+            i_understand_this_can_brick_the_sector=True,
+        )
+        assert card.read_sector_trailer(2).access[3] == READ_ONLY_TRAILER
+
+    def test_a_wrong_length_key_is_rejected(self):
+        card, _ = card_for()
+        with pytest.raises(ValueError, match="6 bytes"):
+            card.write_sector_trailer(
+                2, b"short", NEW_KEY_B, OPEN_ACCESS,
+                i_understand_this_can_brick_the_sector=True,
+            )
+
+
+class TestLockedSectorRecovery:
+    """The reference tag has a sector authentication opens but no read survives; these
+    reproduce that state from raw trailer bytes and exercise recovery both ways."""
+
+    def locked_card(self, *, access, key_b=bytes(6)):
+        image = FakeClassic1K()
+        corrupt_sector(image, 1, key_a=b"\x11" * 6, key_b=key_b, access=access)
+        card = identify(FakeReader(image))
+        return card, image
+
+    def test_authentication_succeeds_but_the_read_is_refused(self):
+        # Exactly the reference tag: key B all-zeros opens sector 1, then 63 00.
+        card, _ = self.locked_card(access=(DEAD_DATA, DEAD_DATA, DEAD_DATA, READ_ONLY_TRAILER))
+        with pytest.raises(ApduError):
+            card.read_bytes(0, 16)
+
+    def test_the_trailer_still_reads_and_diagnoses_the_fault(self):
+        card, _ = self.locked_card(access=(DEAD_DATA, DEAD_DATA, DEAD_DATA, READ_ONLY_TRAILER))
+        trailer = card.read_sector_trailer(1)
+        assert first_dead_data_block(trailer.access) == 0
+
+    def test_recovery_when_the_trailer_still_writes(self):
+        # The reference tag's key B is 000000 and its trailer (011) still lets key B
+        # rewrite it: set_sector_keys should bring the sector back to transport.
+        card, _ = self.locked_card(access=(DEAD_DATA, DEAD_DATA, DEAD_DATA, READ_ONLY_TRAILER))
+        card.set_sector_keys(
+            1, FACTORY_KEY, FACTORY_KEY, i_understand_this_can_brick_the_sector=True
+        )
+
+        card.keys = StaticKeyProvider(key=FACTORY_KEY)
+        assert card.read_sector_trailer(1).access == OPEN_ACCESS
+        card.write_bytes(0, b"recovered")
+        assert card.read_bytes(0, 9) == b"recovered"
+
+    def test_a_truly_frozen_trailer_cannot_be_recovered(self):
+        # Access 101 lets no key rewrite the trailer: the write is refused and the
+        # verify never gets to claim success.
+        card, _ = self.locked_card(access=(DEAD_DATA, DEAD_DATA, DEAD_DATA, (1, 0, 1)))
+        with pytest.raises((ApduError, WriteVerificationError)):
+            card.set_sector_keys(
+                1, FACTORY_KEY, FACTORY_KEY, i_understand_this_can_brick_the_sector=True
+            )

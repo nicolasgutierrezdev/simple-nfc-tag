@@ -16,7 +16,15 @@ See the README for the architecture and the wire format.
 
 from __future__ import annotations
 
+from simple_nfc_tag.access_bits import (
+    READ_ONLY_TRAILER,
+    TRANSPORT_DATA,
+    TRANSPORT_TRAILER,
+    decode_access_bits,
+    encode_access_bits,
+)
 from simple_nfc_tag.cards import Card, identify
+from simple_nfc_tag.cards.mifare_classic import SectorTrailer
 from simple_nfc_tag.codecs import (
     I8,
     I16,
@@ -85,6 +93,9 @@ __all__ = [
     "I16",
     "I32",
     "I64",
+    "READ_ONLY_TRAILER",
+    "TRANSPORT_DATA",
+    "TRANSPORT_TRAILER",
     "U8",
     "U16",
     "U32",
@@ -111,6 +122,7 @@ __all__ = [
     "Reader",
     "ReaderError",
     "ReaderNotSupported",
+    "SectorTrailer",
     "StaticKeyProvider",
     "UnknownFormat",
     "UnsupportedCard",
@@ -118,6 +130,8 @@ __all__ = [
     "__version__",
     "codec_for",
     "connect",
+    "decode_access_bits",
+    "encode_access_bits",
     "identify",
     "known_codecs",
     "list_readers",

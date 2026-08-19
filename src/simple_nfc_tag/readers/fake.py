@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from typing import ClassVar
 
+from simple_nfc_tag import access_bits
 from simple_nfc_tag.exceptions import ApduError, NoCardPresent, ReaderNotSupported
 from simple_nfc_tag.keys import FACTORY_KEY, KeyType
 from simple_nfc_tag.readers.base import Reader
@@ -327,6 +328,8 @@ class FakeClassic1K(FakeTag):
         self._slots: dict[int, bytes] = {}
         #: The single open sector. A Classic authenticates one at a time.
         self._open_sector: int | None = None
+        #: Which key opened it, ``"A"`` or ``"B"`` -- the access conditions care.
+        self._open_key: str | None = None
 
     def _init_memory(self) -> None:
         self.memory[0 : len(self.uid)] = self.uid
@@ -348,6 +351,7 @@ class FakeClassic1K(FakeTag):
     def authenticate(self, block: int, key_type: KeyType, slot: int) -> None:
         # Any authentication attempt closes whatever was open, successful or not.
         self._open_sector = None
+        self._open_key = None
 
         key = self._slots.get(slot)
         if key is None:
@@ -362,28 +366,71 @@ class FakeClassic1K(FakeTag):
         if key != expected:
             raise _failed(deselects=False)
         self._open_sector = self.sector_of(block)
+        self._open_key = "A" if key_type is KeyType.A else "B"
+
+    def _access(self, block: int) -> access_bits.AccessCondition:
+        """The access condition governing one block, from its trailer.
+
+        Decoded straight out of ``memory`` so a test can corrupt a trailer by writing
+        raw bytes and have every later read and write honour it -- which is how the
+        locked-sector case is reproduced without a locked tag on the desk.
+        """
+        trailer = (self.sector_of(block) + 1) * self.blocks_per_sector - 1
+        start = trailer * self.block_size
+        conditions = access_bits.decode_access_bits(bytes(self.memory[start + 6 : start + 9]))
+        index = block % self.blocks_per_sector
+        return conditions[index]
 
     def read(self, block: int, length: int) -> bytes:
         self._require_auth(block)
         if block * self.block_size + length > len(self.memory):
             raise _failed()
+
+        # Enforce the read column of the access conditions. A data block the open key
+        # may not read answers 63 00 while staying selected -- the exact shape a
+        # locked sector shows: authentication succeeds, then every read is refused.
+        for block_number in range(block, block + length // self.block_size):
+            if not self._is_trailer(block_number) and not self._may_read(block_number):
+                raise _failed(deselects=False)
+
         data = bytearray(super().read(block, length))
 
-        # Key A is never readable. It answers as zeros however the sector is
-        # configured, which is what a real trailer read looks like -- anyone checking
-        # that a write left the keys alone has to look at the access bits, not at
-        # what comes back where key A lives.
+        # Key A is never readable, and key B only under some conditions. Both answer as
+        # zeros otherwise, which is what a real trailer read looks like -- anyone
+        # checking that a write left the keys alone has to look at the access bits, not
+        # at what comes back where the keys live.
         for index, block_number in enumerate(range(block, block + length // self.block_size)):
             if self._is_trailer(block_number):
                 start = index * self.block_size
                 data[start : start + 6] = bytes(6)
+                if not self._key_b_readable(block_number):
+                    data[start + 10 : start + 16] = bytes(6)
         return bytes(data)
 
     def _is_trailer(self, block: int) -> bool:
         return block % self.blocks_per_sector == self.blocks_per_sector - 1
 
+    def _may_read(self, block: int) -> bool:
+        readers, _ = access_bits.data_permissions(self._access(block))
+        return self._open_key in readers
+
+    def _may_write(self, block: int) -> bool:
+        if self._is_trailer(block):
+            return self._open_key in access_bits.trailer_writers(self._access(block))
+        _, writers = access_bits.data_permissions(self._access(block))
+        return self._open_key in writers
+
+    def _key_b_readable(self, block: int) -> bool:
+        # Key B is exposed only where the trailer condition offers no write access with
+        # it -- the three conditions that treat its bytes as data rather than a secret.
+        return self._access(block) in {(0, 0, 0), (0, 1, 0), (0, 0, 1)}
+
     def write(self, block: int, data: bytes) -> None:
         self._require_auth(block)
+        # A refused write answers 63 00 without deselecting -- on a Classic the reader
+        # rejects it locally rather than the tag NAKing over the air.
+        if not self._may_write(block):
+            raise _failed(deselects=False)
         super().write(block, data)
 
     def _require_auth(self, block: int) -> None:
