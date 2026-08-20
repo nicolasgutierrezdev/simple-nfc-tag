@@ -5,6 +5,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-08-20
+
+First functional release. The API and the wire format are experimental until v1.0.
+
 ### Added
 
 - Exception hierarchy rooted at `NfcError`, split into `ReaderError`, `CardError` and
@@ -81,10 +85,6 @@ This project follows [Semantic Versioning](https://semver.org/).
 - `FakeReader`'s Classic image now matches measured hardware: one open sector at a time, `63 00`
   rather than `69 82` for an unauthenticated read, no deselect on a refused key, and key A
   reading back as zeros.
-
-### Planned
-
-- The first tagged release
 
 ## [0.0.1] - 2026-08-18
 

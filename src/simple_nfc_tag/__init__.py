@@ -65,7 +65,7 @@ from simple_nfc_tag.keys import (
 from simple_nfc_tag.monitor import Monitor
 from simple_nfc_tag.readers import ACR122U, PCSCReader, Reader, list_readers, open_reader
 
-__version__ = "0.1.0.dev0"
+__version__ = "0.1.0"
 
 
 def connect(name: str | None = None) -> Reader:
