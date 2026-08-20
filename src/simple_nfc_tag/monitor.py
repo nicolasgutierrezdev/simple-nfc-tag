@@ -1,26 +1,18 @@
-"""Background tag monitoring: callbacks instead of a polling loop you write yourself.
+"""Background tag monitoring.
 
-The service shape. A :class:`Monitor` runs a thread that watches one reader and calls
-you when a tag arrives or leaves::
+A :class:`Monitor` runs a thread that watches one reader and calls back as tags arrive
+and leave::
 
     with Monitor(reader, on_tag=lambda tag: print(tag.read())) as monitor:
         ...
 
-Two things it does that a hand-rolled ``while True`` usually gets wrong:
+* **Debounce.** The same UID is reported again only after ``debounce`` seconds, so a
+  tag parked on the reader is not reported on every tick.
+* **Idle cost.** Waiting goes through :meth:`Reader.wait_for_change`, which on a PC/SC
+  reader blocks in the driver until the presence changes. Readers without that
+  facility fall back to sleeping.
 
-**Debounce.** A tag left sitting on the reader is seen on every tick. Reporting it
-every time is almost never what the caller wants, so the same UID is only reported
-again after ``debounce`` seconds. This is the behaviour the original scanner script
-had, minus its habit of mutating state inside the getter that reported it.
-
-**Idle cost.** Waiting is delegated to :meth:`Reader.wait_for_change`, which on a
-PC/SC reader blocks in the driver until the presence actually changes -- no wakeups
-while nothing is happening, and detection in milliseconds rather than up to a full
-poll interval. Readers without that facility fall back to sleeping, and the monitor
-works either way.
-
-Callbacks run on the monitor's thread, so anything they touch needs to be safe to
-touch from there, and a slow callback delays the next detection.
+Callbacks run on the monitor's thread, and a slow callback delays the next detection.
 """
 
 from __future__ import annotations
@@ -50,8 +42,7 @@ class Monitor:
     :param on_tag: called with the :class:`Card` each time a tag is reported.
     :param on_removed: called with the UID (bytes) when a reported tag leaves.
     :param on_error: called with any :class:`NfcError` raised while polling. Without
-        it, errors are swallowed and polling continues -- a tag pulled off mid-read
-        must not kill the thread.
+        it, errors are swallowed and polling continues.
     :param debounce: seconds before the *same* UID is reported again. ``0`` reports
         every time it is seen.
     :param poll_interval: how long a single wait lasts. With a reader that supports
@@ -130,11 +121,7 @@ class Monitor:
         self.stop()
 
     def forget(self, uid: bytes | None = None) -> None:
-        """Clear the debounce, for one UID or for all of them.
-
-        Lets a caller say "report this tag again next time you see it" without waiting
-        the window out -- after a failed read, say, where a retry is the whole point.
-        """
+        """Clear the debounce, for one UID or for all of them."""
         if uid is None:
             self._last_reported.clear()
         else:
@@ -147,8 +134,7 @@ class Monitor:
             try:
                 self._tick()
             except NfcError as error:
-                # One bad read must not end the service. The tag being yanked
-                # mid-exchange is a routine event, not a fatal one.
+                # A tag yanked mid-exchange is routine; it must not end the thread.
                 self._present = None
                 if self.on_error is not None:
                     self.on_error(error)

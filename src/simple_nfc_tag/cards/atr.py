@@ -1,13 +1,11 @@
 """Decoding the PC/SC contactless ATR.
 
-A contactless reader does not hand over a real smart-card ATR: it synthesises one,
-and PC/SC Part 3 fixes what goes in it. The two bytes that matter are the *card
-name*, which says MIFARE Classic 1K / 4K / Ultralight, and the *standard* byte,
-which says ISO 14443 A or B.
+A contactless reader synthesises the ATR, with PC/SC Part 3 fixing its contents. Two
+bytes matter: the *card name* (MIFARE Classic 1K / 4K / Ultralight) and the *standard*
+byte (ISO 14443 A or B).
 
-That is as far as the ATR gets us. NTAG213, NTAG215, NTAG216 and plain Ultralight
-all report card name ``0003``, so telling them apart needs ``GET_VERSION`` over
-:meth:`Reader.transceive` -- see :mod:`simple_nfc_tag.cards`.
+NTAG213, NTAG215, NTAG216 and plain Ultralight all report card name ``0003``, so
+telling them apart needs ``GET_VERSION`` over :meth:`Reader.transceive`.
 """
 
 from __future__ import annotations
@@ -16,8 +14,8 @@ from dataclasses import dataclass
 
 __all__ = ["CARD_NAMES", "AtrInfo", "parse_atr"]
 
-# Registered application provider identifier of the PC/SC workgroup. Everything
-# interesting in the ATR sits immediately behind it.
+# Registered application provider identifier of the PC/SC workgroup. The card name
+# and standard byte sit immediately behind it.
 _PCSC_RID = b"\xa0\x00\x00\x03\x06"
 
 #: Card names from the PC/SC Part 3 supplement, for the tags this package cares about.
@@ -36,7 +34,7 @@ CARD_NAMES = {
 
 @dataclass(frozen=True)
 class AtrInfo:
-    """What the ATR is willing to tell us about the tag."""
+    """What the ATR reports about the tag."""
 
     #: The 2-byte PC/SC card name, or ``None`` if the ATR does not carry one.
     card_name: int | None
@@ -55,11 +53,10 @@ class AtrInfo:
 def parse_atr(atr: bytes) -> AtrInfo:
     """Pull the card name and standard byte out of a contactless ATR.
 
-    Rather than walking the interface-byte chain to find the historical bytes, this
-    locates the PC/SC RID directly: the layout behind it (``SS C0 C1``) is fixed,
-    while the framing in front of it varies between readers and firmware revisions.
-    An ATR with no RID in it is not an error -- it just tells us nothing, and the
-    caller falls back to probing.
+    Locates the PC/SC RID directly instead of walking the interface-byte chain: the
+    layout behind it (``SS C0 C1``) is fixed, while the framing in front varies between
+    readers and firmware revisions. An ATR with no RID is not an error; the caller
+    falls back to probing.
     """
     index = atr.find(_PCSC_RID)
     if index < 0 or len(atr) < index + len(_PCSC_RID) + 3:

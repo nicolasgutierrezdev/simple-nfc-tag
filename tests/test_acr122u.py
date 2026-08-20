@@ -27,8 +27,8 @@ class TestTransceive:
         assert reader.transceive(b"\x30\x04") == b"\xaa\xbb"
 
     def test_pn532_error_status_is_raised_not_returned(self):
-        # 0x0A is the PN532 saying the tag left the field. Returning the empty
-        # payload here would look like a successful read of nothing.
+        # 0x0A is the PN532 saying the tag left the field. Returning the empty payload
+        # would look like a successful read of nothing.
         reader = StubACR122U([pn532_reply(status=0x0A)])
         with pytest.raises(ReaderError, match="left the field"):
             reader.transceive(b"\x60")

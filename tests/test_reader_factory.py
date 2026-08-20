@@ -30,8 +30,8 @@ class TestDriverSelection:
         assert driver_for("acs acr122u picc interface 0") is ACR122U
 
     def test_anything_else_falls_back_to_standard_pcsc(self):
-        # The fallback has to be a working reader, not an error: a reader we have no
-        # driver for still speaks the standardised commands.
+        # The fallback is a working reader, not an error: an unrecognised reader still
+        # speaks the standardised commands.
         assert driver_for(OTHER_NAME) is PCSCReader
 
     def test_a_driver_needs_something_to_match_on(self):

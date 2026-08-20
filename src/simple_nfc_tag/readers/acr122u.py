@@ -1,13 +1,11 @@
 """ACS ACR122U driver.
 
-The ACR122U is a PN532 behind a PC/SC front end, which is what makes it worth a
-driver of its own: the PN532 can be addressed directly through a vendor pseudo-APDU,
-giving the raw ISO 14443-3 passthrough that :meth:`Reader.transceive` promises and
-generic PC/SC cannot offer. That passthrough is the only way to tell an NTAG213 from
-an NTAG216, and the only way to run ``PWD_AUTH``.
+The ACR122U is a PN532 behind a PC/SC front end. The PN532 can be addressed directly
+through a vendor pseudo-APDU, which gives the raw ISO 14443-3 passthrough behind
+:meth:`Reader.transceive`: the only way to tell an NTAG213 from an NTAG216, and the
+only way to run ``PWD_AUTH``.
 
-Everything here is vendor-specific by definition, which is exactly why it is confined
-to this module.
+Everything here is vendor-specific and stays in this module.
 """
 
 from __future__ import annotations
@@ -48,10 +46,9 @@ class ACR122U(PCSCReader):
     def transceive(self, payload: bytes) -> bytes:
         """Send a raw ISO 14443-3 command to the tag through the PN532.
 
-        The payload goes out inside ``FF 00 00 00 <Lc> D4 42 …`` and the answer comes
-        back as ``D5 43 <status> <data>``; a non-zero status is the PN532 reporting a
-        radio-level failure, which is a different thing from a status word and has to
-        be raised as one.
+        The payload goes out inside ``FF 00 00 00 <Lc> D4 42 …``; the answer comes back
+        as ``D5 43 <status> <data>``. A non-zero status is a radio-level failure
+        reported by the PN532, not a status word.
         """
         if not payload:
             raise ValueError("transceive needs at least one byte to send")
@@ -75,9 +72,9 @@ class ACR122U(PCSCReader):
     def set_buzzer(self, enabled: bool) -> None:
         """Turn the card-detection beep on or off.
 
-        A reader-level setting that persists until changed, but it has to be sent over
-        a *card* connection: doing it with an empty field needs ``SCardControl`` escape
-        commands, which on Windows require a per-reader registry opt-in.
+        Persists until changed, but has to be sent over a card connection: doing it
+        with an empty field needs ``SCardControl`` escape commands, which on Windows
+        require a per-reader registry opt-in.
         """
         self.transmit(bytes([0xFF, 0x00, 0x52, 0xFF if enabled else 0x00, 0x00]))
 
@@ -92,9 +89,8 @@ class ACR122U(PCSCReader):
     def firmware_version(self) -> str:
         """The reader's firmware string, e.g. ``ACR122U207``.
 
-        The reader answers with the tail of the string in the status-word position
-        rather than a real status word, so this is the one command whose ``SW`` bytes
-        are payload.
+        The tail of the string arrives in the status-word position, so this command's
+        ``SW`` bytes are payload.
         """
         data, sw1, sw2 = self.transmit_raw(b"\xff\x00\x48\x00\x00")
         return (bytes(data) + bytes([sw1, sw2])).decode("ascii", errors="replace")

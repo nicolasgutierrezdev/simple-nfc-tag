@@ -1,30 +1,26 @@
 """Manual hardware check for MIFARE Classic key and access-bit management.
 
-Never run in CI -- it needs a reader and a Classic tag.
+Needs a reader and a Classic tag. Never run in CI.
 
-Read-only by default: it walks every sector, reports which well-known key opens it,
-and decodes the trailer's access bits. This is the safe way to see what state a tag is
-in, including a sector that authenticates but refuses every read.
+Read-only by default: walks every sector, reports which well-known key opens it, and
+decodes the trailer's access bits.
 
     uv run python examples/classic_keys.py
 
-Pass ``--probe-keys`` to try every candidate as both A and B instead of stopping at the
-first that works, which is what it takes to see a sector's whole key pair -- a sector
-opened by the factory key as B will otherwise never report its key A. Still read-only,
-just slower:
+``--probe-keys`` tries every candidate as both A and B instead of stopping at the first
+that works, which is what it takes to see a sector's whole key pair. Still read-only:
 
     uv run python examples/classic_keys.py --probe-keys
 
-Pass ``--recover N`` to attempt to bring sector N back to the transport configuration
-(open data, key A = key B = FF FF FF FF FF FF). **This writes the sector trailer**,
-which is the one irreversible operation on a Classic:
+``--recover N`` brings sector N back to the transport configuration (open data,
+key A = key B = FF FF FF FF FF FF). **This writes the sector trailer**, the one
+irreversible operation on a Classic:
 
     uv run python examples/classic_keys.py --recover 1
 
 It only helps a sector whose trailer can still be rewritten with a key the default
-policy knows -- if the trailer is frozen, or its key is unknown, the write is refused
-and nothing changes. A refused trailer write is safe; a wrong *accepted* one is not,
-which is why this is a separate, explicit flag on a sacrificial tag.
+policy knows. A frozen trailer, or an unknown key, means the write is refused and
+nothing changes. Use a sacrificial tag.
 """
 
 from __future__ import annotations
@@ -60,13 +56,11 @@ def _opening_key(reader: snt.Reader, card: MifareClassic, sector: int) -> tuple[
 
 
 def _key_pair(reader: snt.Reader, card: MifareClassic, sector: int) -> dict[str, list[bytes]]:
-    """*Every* well-known key that opens a sector, split into key A and key B.
+    """Every well-known key that opens a sector, split into key A and key B.
 
     :func:`_opening_key` stops at its first hit, which hides the other half of the
-    pair: on a sector whose key B is the factory key, key A is never reported even when
-    it is a key this list knows. Key A is write-only under every access condition -- it
-    always reads back as zeros -- so trying each candidate is the only way to learn it,
-    and knowing it is what makes a trailer write verifiable afterwards.
+    pair. Key A is write-only under every access condition and always reads back as
+    zeros, so trying each candidate is the only way to learn it.
     """
     first_block = card._sector_bounds(sector)[0]
     found: dict[str, list[bytes]] = {"A": [], "B": []}

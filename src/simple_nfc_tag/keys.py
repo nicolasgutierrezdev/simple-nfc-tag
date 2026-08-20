@@ -1,10 +1,8 @@
 """Key material for authenticated tags.
 
-A MIFARE Classic sector will not answer a single read until the reader has proved it
-knows a key for it, and there is no way to ask a tag which key it wants: you try one,
-and a refusal is the only feedback. So key handling is a *policy* -- an ordered list
-of candidates -- rather than a lookup, and it is pluggable because the sensible list
-depends on where the tags came from.
+A MIFARE Classic sector answers nothing until a key for it is proved, and a tag cannot
+be asked which key it wants. Key handling is therefore an ordered list of candidates,
+pluggable because the sensible list depends on where the tags came from.
 """
 
 from __future__ import annotations
@@ -25,8 +23,8 @@ __all__ = [
 #: The transport-configuration key every blank MIFARE Classic ships with.
 FACTORY_KEY = b"\xff\xff\xff\xff\xff\xff"
 
-#: Keys that turn up on tags that were never properly personalised: the NDEF public
-#: key, the old MAD keys, and the handful that ship in sample code.
+#: Keys found on tags that were never personalised: the NDEF public key, the old MAD
+#: keys, and a few that ship in sample code.
 WELL_KNOWN_KEYS = (
     FACTORY_KEY,
     bytes.fromhex("D3F7D3F7D3F7"),  # NFC Forum public key, used by NDEF-formatted tags
@@ -55,8 +53,7 @@ class KeyProvider(abc.ABC):
 class DefaultKeyProvider(KeyProvider):
     """Try the factory key as A then B, then the other well-known keys.
 
-    Ordered by how likely each is rather than by completeness: the first two cover
-    every blank tag, and getting them wrong costs an extra round trip per sector.
+    Ordered by likelihood: a wrong candidate costs one round trip per sector.
     """
 
     def keys_for(self, sector: int) -> Iterator[tuple[KeyType, bytes]]:

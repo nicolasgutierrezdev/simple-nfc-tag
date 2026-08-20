@@ -1,20 +1,15 @@
 """Outer framing: the NFC Forum Type-2 TLV stream.
 
 User memory on a Type-2 tag is a sequence of TLV blocks, and this package writes into
-that structure rather than over it. A compact-TLV payload travels inside a
-*proprietary* block (``0xFD``), which costs three bytes and buys two things: the tag
-stays a well-formed TLV stream that other NFC software can walk past without choking,
-and a tag written today stays readable once an NDEF codec exists, because reading
-dispatches on the block tag rather than on an argument the caller has to remember.
+that structure rather than over it. A compact-TLV payload travels inside a proprietary
+block (``0xFD``). Three bytes of overhead: the tag stays a well-formed TLV stream other
+NFC software can walk past, and reading dispatches on the block tag rather than on an
+argument.
 
-The length rule lives here and is used by **both** tiers -- the TLV blocks in this
-module and the typed values inside them: one byte for ``0x00``-``0xFE``, or ``0xFF``
-followed by two big-endian bytes. One rule rather than two is a deliberate choice.
-The obvious alternative for the inner values was BER (ISO 7816-4), the convention a
-smartcard person would expect inside something called a TLV, but a second rule in the
-same file format buys nothing: the inner payload sits inside a proprietary block that
-no other tool parses, BER costs a byte more for values 128-254 bytes long, and its
-64KB-plus reach is meaningless on a tag with 888 bytes of user memory.
+The length rule lives here and covers both tiers, the TLV blocks in this module and the
+typed values inside them: one byte for ``0x00``-``0xFE``, or ``0xFF`` followed by two
+big-endian bytes. The inner tier used BER (ISO 7816-4) until it was unified; do not
+reintroduce a second convention.
 """
 
 from __future__ import annotations
@@ -32,7 +27,7 @@ __all__ = [
     "parse_length",
 ]
 
-#: Padding. One byte, no length, no value -- skip it.
+#: Padding. One byte, no length, no value; skip it.
 NULL = 0x00
 #: An NDEF message. Not decoded by this version, but recognised so the failure is clear.
 NDEF = 0x03
@@ -74,8 +69,7 @@ def decode_length(data: bytes, offset: int = 0) -> tuple[int, int]:
 def parse_length(head: bytes) -> tuple[int, int]:
     """How long the value is, and how many bytes the length itself took.
 
-    Split out because a reader working from a tag has to know how far to skip before it
-    has the whole block in hand.
+    A reader working from a tag needs the skip distance before it has the whole block.
     """
     length, end = decode_length(head, 0)
     return length, end

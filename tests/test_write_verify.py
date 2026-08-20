@@ -1,8 +1,8 @@
 """Write verification: reading the bytes back, because a refused write can report success.
 
-The failure being guarded against was measured on an ACR122U with an NTAG213 -- a write
-to a page protected by ``AUTH0`` answers ``90 00`` and changes nothing -- and the fake
-NTAG images reproduce it, which is what lets all of this run with no reader attached.
+Measured on an ACR122U with an NTAG213: a write to a page protected by ``AUTH0``
+answers ``90 00`` and changes nothing. The fake NTAG images reproduce it, so this runs
+with no reader attached.
 """
 
 from __future__ import annotations
@@ -62,9 +62,8 @@ class TestVerifiedWrite:
         assert "0x45" in str(error)
 
     def test_the_deselect_does_not_mask_the_real_error(self):
-        # A refused NTAG write deselects the tag, so the verifying read is the command
-        # that trips over it. The caller must still hear "the bytes are wrong", not an
-        # ApduError from a read that failed for a second-order reason.
+        # A refused NTAG write deselects the tag, so the verifying read trips over it.
+        # The caller must still hear "the bytes are wrong", not an ApduError.
         tag, reader, _ = protected_ntag()
         with pytest.raises(WriteVerificationError):
             tag.write_bytes(PROTECTED_AT, b"MINE")
@@ -107,8 +106,8 @@ class TestCost:
         reader = tag.reader
         payload = bytes(48)  # 3 blocks, all inside sector 1
 
-        # Warm up first: otherwise the unverified run alone pays for the LOAD KEY and
-        # AUTHENTICATE that open sector 1, and the comparison measures that instead.
+        # Warm up first, or the unverified run pays for the LOAD KEY and AUTHENTICATE
+        # that open sector 1 and the comparison measures that instead.
         tag.write_bytes(0, payload, verify=False)
 
         before = len(reader.sent)
@@ -119,15 +118,15 @@ class TestCost:
         tag.write_bytes(0, payload)
         verified = len(reader.sent) - before
 
-        # The sector is already open for the read-back, so it costs reads and nothing
-        # else -- no second authentication.
+        # The sector is already open for the read-back: reads only, no second
+        # authentication.
         assert verified == writes + 3
 
 
 class TestClassicSessionCache:
     def test_a_rebuilt_session_invalidates_the_open_sector(self):
-        # Verification can rebuild the RF session. A Classic that goes on believing
-        # its sector is still open would skip the authentication the next read needs.
+        # Verification can rebuild the RF session. A Classic still believing its
+        # sector is open would skip the authentication the next read needs.
         tag = identify(FakeReader(FakeClassic1K()))
         tag.read_bytes(0, 16)
         assert tag.authenticated_sector == 1
@@ -135,6 +134,6 @@ class TestClassicSessionCache:
         tag._session_restarted()
         assert tag.authenticated_sector is None
 
-        # And it recovers by authenticating again rather than failing.
+        # It recovers by authenticating again rather than failing.
         assert len(tag.read_bytes(0, 16)) == 16
         assert tag.authenticated_sector == 1

@@ -1,8 +1,8 @@
 """The compact TLV codec: a sequence of typed values in as few bytes as possible.
 
-A tag holds a *sequence*, so ``write(["ABC123", 42])`` gives ``read() -> ["ABC123", 42]``.
+A tag holds a sequence, so ``write(["ABC123", 42])`` gives ``read() -> ["ABC123", 42]``.
 Values are typed automatically; wrap one in :class:`~simple_nfc_tag.codecs.values.U16`
-and friends when the width has to be pinned rather than minimal.
+and friends to pin the width.
 
 Inner and outer lengths follow the same rule, the one in
 :mod:`~simple_nfc_tag.codecs.framing`.
@@ -15,8 +15,8 @@ On the wire::
     02 02 00 2A               inner: T=u16, length 2, U16(42)
     FE                        terminator
 
-Fifteen bytes to hold a six-character string and a number, of which three are the
-framing that keeps the tag a valid Type-2 TLV stream.
+Fifteen bytes for a six-character string and a number, three of them the framing that
+keeps the tag a valid Type-2 TLV stream.
 """
 
 from __future__ import annotations
@@ -43,8 +43,8 @@ class CompactTlvCodec:
         """Frame a value, or a sequence of values, for writing at offset 0.
 
         A bare value is treated as a one-element sequence, so ``write("hello")`` and
-        ``write(["hello"])`` put the same bytes on the tag. :meth:`decode` always hands
-        back a list, which is the price of the tag holding a sequence at all.
+        ``write(["hello"])`` put the same bytes on the tag. :meth:`decode` always
+        returns a list.
         """
         items = self._as_sequence(value)
 

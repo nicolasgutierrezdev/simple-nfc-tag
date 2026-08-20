@@ -42,17 +42,17 @@ class TestIdentification:
         ],
     )
     def test_probing_finds_the_same_product_without_a_passthrough(self, image, driver):
-        # A reader with no raw passthrough cannot ask GET_VERSION, so the driver has
-        # to find the end of memory by hand. It must land on the same answer.
+        # A reader with no raw passthrough cannot ask GET_VERSION, so the driver finds
+        # the end of memory by probing. Same answer either way.
         assert type(card_for(image, supports_transceive=False)) is driver
 
     def test_a_plain_ultralight_is_identified_despite_having_no_get_version(self):
         assert type(card_for(FakeUltralight)) is Ultralight
 
     def test_the_tag_is_still_readable_after_probing_identification(self):
-        # Probing works by reading past the end of memory, which deselects the tag.
-        # Without a session reset the tag identifies correctly and then refuses every
-        # read that follows -- which is exactly what happened on real hardware.
+        # Probing reads past the end of memory, which deselects the tag. Without a
+        # session reset the tag identifies correctly and then refuses every read that
+        # follows, as measured on hardware.
         image = FakeNTAG213()
         image.memory[16:20] = b"DATA"
         card = identify(FakeReader(image, supports_transceive=False))
@@ -67,7 +67,7 @@ class TestIdentification:
     def test_identification_costs_one_command_when_the_reader_can_ask(self):
         reader = FakeReader(FakeNTAG213())
         identify(reader)
-        # ATR, UID, GET_VERSION -- and no page probing at all.
+        # ATR, UID, GET_VERSION, and no page probing.
         assert len(reader.sent) == 1  # only the UID; GET_VERSION goes via transceive
 
     def test_uid_is_carried_onto_the_card(self):
@@ -94,8 +94,7 @@ class TestGeometry:
         assert next(iter(card._user_blocks())) == 4
 
     def test_user_memory_stops_before_the_config_pages(self):
-        # NTAG213 has 45 pages; the last four hold the password and mirror config,
-        # and writing into them would change how the tag behaves.
+        # NTAG213 has 45 pages; the last four hold the password and mirror config.
         card = card_for(FakeNTAG213)
         assert list(card._user_blocks())[-1] == 39
 

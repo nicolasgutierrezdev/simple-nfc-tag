@@ -1,11 +1,10 @@
 """Inner values: the type registry and how each type is encoded.
 
-One byte of type id, then a length, then the value. Lengths use the single rule in
-:mod:`~simple_nfc_tag.codecs.framing` -- the same one the outer TLV stream uses -- so
-there is exactly one length convention in this file format rather than one per tier.
+One byte of type id, then a length, then the value. Lengths use the rule in
+:mod:`~simple_nfc_tag.codecs.framing`, the same one the outer TLV stream uses.
 
 The type ids below are public API. After v1.0 they are frozen: a new type takes an
-unused id, and an existing id never changes meaning, because tags written by an older
+unused id, and an existing id never changes meaning, so tags written by an older
 version keep working.
 """
 
@@ -51,8 +50,8 @@ BOOL = 0x05
 FLOAT = 0x06
 JSON = 0x07
 
-#: Ids callers may register their own types in. Everything below is reserved so this
-#: package can add types later without colliding with anyone.
+#: Ids callers may register their own types in. Everything below is reserved for this
+#: package.
 CALLER_TYPE_IDS = range(0x10, 0x80)
 
 
@@ -78,8 +77,8 @@ class U8(_Fixed):
 class U16(_Fixed):
     """An unsigned int pinned to two bytes on the tag.
 
-    Worth knowing about when porting an existing layout: values are normally stored in
-    the fewest bytes that fit, so a plain ``42`` occupies one byte, not two.
+    Values are otherwise stored in the fewest bytes that fit, so a plain ``42``
+    occupies one byte.
     """
 
     width = 2
@@ -137,8 +136,8 @@ class InnerType:
     encode: Callable[[Any], bytes]
     decode: Callable[[bytes], Any]
     #: Python types this entry claims when a value is auto-typed. Checked in
-    #: registration order, so narrower types must be registered before wider ones --
-    #: bool before int, since bool *is* an int.
+    #: registration order, so narrower types register first: bool before int, since
+    #: bool is an int.
     claims: tuple[type, ...] = ()
 
 
@@ -155,9 +154,8 @@ def register_type(
 ) -> InnerType:
     """Add a type to the inner registry.
 
-    Use an id from :data:`CALLER_TYPE_IDS`. Everything below that range belongs to this
-    package and may be given a meaning in a later version; taking one now would make
-    the tag unreadable by anything but the code that wrote it.
+    Use an id from :data:`CALLER_TYPE_IDS`. Ids below that range belong to this package
+    and may be given a meaning in a later version.
     """
     if type_id in _TYPES:
         raise ValueError(
@@ -180,10 +178,9 @@ def known_types() -> dict[int, str]:
 def encode_value(value: Any) -> tuple[int, bytes]:
     """Work out a value's inner type and encode it, returning ``(type id, bytes)``.
 
-    Three cases are decided here rather than by the registry, because the type alone
-    does not determine the answer: an explicit width wrapper pins the byte count, a
-    bool must be caught before int since it *is* one, and a plain int picks between
-    the unsigned and signed encodings by its sign.
+    Three cases are decided here rather than by the registry: a width wrapper pins the
+    byte count, a bool must be caught before int since it is one, and a plain int picks
+    between the unsigned and signed encodings by its sign.
     """
     if isinstance(value, _Fixed):
         return (INT if value.signed else UINT), _fixed_bytes(value)
@@ -196,8 +193,7 @@ def encode_value(value: Any) -> tuple[int, bytes]:
         if entry.claims and isinstance(value, entry.claims):
             return entry.id, entry.encode(value)
 
-    # Anything with no dedicated encoding travels as JSON rather than failing: a dict
-    # or a nested list is a reasonable thing to want on a tag.
+    # Anything with no dedicated encoding travels as JSON: a dict or a nested list.
     return JSON, _TYPES[JSON].encode(value)
 
 
@@ -277,9 +273,8 @@ def _decode_json(payload: bytes) -> Any:
         raise DecodeError(f"JSON value could not be parsed: {exc}") from exc
 
 
-# Registration order matters to the claim scan in encode_value: a narrower type has to
-# be registered before a wider one. The numeric types claim nothing, because which of
-# them applies is decided by sign and by width wrappers rather than by Python type.
+# Registration order matters to the claim scan in encode_value: narrower types first.
+# The numeric types claim nothing; sign and width wrappers decide which applies.
 register_type(BOOL, "bool", lambda v: b"\x01" if v else b"\x00", _decode_bool)
 register_type(STR, "str", lambda v: v.encode("utf-8"), _decode_str, (str,))
 register_type(BYTES, "bytes", bytes, lambda p: bytes(p), (bytes, bytearray))

@@ -1,19 +1,17 @@
 """MIFARE Ultralight and NTAG21x.
 
-These are the same tag as far as PC/SC is concerned -- all of them report card name
-``0003`` -- and they differ only in how much memory they have. Telling them apart is
-therefore the whole job of this module, and it is done twice over:
+All of these report card name ``0003`` to PC/SC and differ only in memory size, so
+identification is the job of this module. Two routes:
 
-1. ``GET_VERSION`` (``0x60``) through :meth:`Reader.transceive`, whose byte 6 gives
-   the storage size. Exact, but needs a reader with a raw passthrough.
-2. Failing that, probing for the last readable page. A read past the end of memory
-   answers ``63 00``; a read *at* the end succeeds and quietly wraps around to page
-   0. Both were captured from an ACR122U with an NTAG213 on it.
+1. ``GET_VERSION`` (``0x60``) through :meth:`Reader.transceive`; byte 6 is the storage
+   size. Exact, but needs a reader with a raw passthrough.
+2. Otherwise, probing for the last readable page. A read past the end of memory
+   answers ``63 00``; a read at the end succeeds and wraps around to page 0. Both
+   captured from an ACR122U with an NTAG213.
 
-The addressing quirk worth remembering: a read returns 16 bytes -- four pages --
-whatever you asked for, but a write takes exactly one 4-byte page. Writes that are
-not page-aligned therefore need a read-modify-write, which the linear tier in
-:class:`~simple_nfc_tag.cards.base.Card` already handles.
+Addressing quirk: a read returns 16 bytes (four pages) whatever was asked for, but a
+write takes exactly one 4-byte page. Unaligned writes need a read-modify-write, which
+the linear tier in :class:`~simple_nfc_tag.cards.base.Card` handles.
 """
 
 from __future__ import annotations
@@ -46,7 +44,7 @@ _GET_VERSION = b"\x60"
 #: PWD_AUTH: the command byte, followed by the 4-byte password.
 _PWD_AUTH = b"\x1b"
 
-#: PROT, bit 7 of the ACCESS byte -- the first byte of CFG1. Set, protection covers
+#: PROT, bit 7 of the ACCESS byte (the first byte of CFG1). Set, protection covers
 #: reads as well as writes; clear, protected pages stay readable by anyone.
 _PROT = 0x80
 
@@ -61,8 +59,8 @@ _PAGES_PER_READ = 4
 class Ultralight(Card):
     """A MIFARE Ultralight: 16 pages, 48 bytes of user memory.
 
-    Also the base class for the NTAG21x drivers, and the fallback when a tag in this
-    family cannot be pinned down any more precisely.
+    Base class for the NTAG21x drivers, and the fallback for an unidentifiable tag in
+    this family.
     """
 
     product: ClassVar[str] = "MIFARE Ultralight"
@@ -77,8 +75,8 @@ class Ultralight(Card):
 
     @classmethod
     def probe(cls, reader: Reader, atr: AtrInfo, uid: bytes) -> Card | None:
-        # Only the class this decorator registered does the work; the subclasses are
-        # products it can return, not independent candidates.
+        # Only the registered class probes; the subclasses are products it returns,
+        # not independent candidates.
         if cls is not Ultralight or atr.card_name not in _ULTRALIGHT_CARD_NAMES:
             return None
 
@@ -88,16 +86,13 @@ class Ultralight(Card):
     def authenticate(self, password: bytes, pack: bytes | None = None) -> bytes:
         """Prove a password with ``PWD_AUTH``, returning the tag's 2-byte PACK.
 
-        NTAG21x protection is a password, not a key: pages from a configurable start
-        answer nothing (or refuse writes) until ``PWD_AUTH`` has been sent for this RF
-        session. It is forgotten the moment the tag leaves the field, so this has to be
-        called once per card presence -- the same lifetime as the card object it hangs
-        off.
+        Protection lasts one RF session and is forgotten when the tag leaves the field,
+        so this is called once per card presence.
 
         :param password: the 4-byte password.
-        :param pack: if given, the 2-byte acknowledgement expected back. Checking it is
-            what stops a fake tag from harvesting passwords: a real tag can only return
-            the right PACK if it already knew the password.
+        :param pack: if given, the 2-byte acknowledgement expected back. Checking it
+            stops a fake tag from harvesting passwords: only a tag that already knew
+            the password can return the right PACK.
 
         Raises :class:`AuthenticationError` if the tag refuses the password or returns
         the wrong PACK, and :class:`ReaderNotSupported` on a reader with no raw
@@ -113,8 +108,8 @@ class Ultralight(Card):
         except ReaderNotSupported:
             raise
         except NfcError as exc:
-            # A refused password deselects the tag; leaving it that way would make
-            # every later read fail for a reason that looks nothing like a bad password.
+            # A refused password deselects the tag; without this every later read
+            # fails for a reason that looks nothing like a bad password.
             self._reader.reset_card_connection()
             raise AuthenticationError(f"this {self.product} refused the password") from exc
 
@@ -149,26 +144,21 @@ class Ultralight(Card):
             for writes only, or ``None`` (the default) to leave the setting alone.
 
         **The password is not readable afterwards.** A tag answers reads of its
-        password page with zeros whatever it holds, so nothing here or anywhere else
-        can recover it. Write it down before you call this.
+        password page with zeros whatever it holds. Write it down before calling this.
 
-        Protection is only changed after the new password has been proved on a fresh
+        Protection is changed only after the new password has been proved on a fresh
         session: the tag is re-selected, ``PWD_AUTH`` is run, and the PACK is checked.
-        Without that order a typo in ``password`` would protect pages with a secret
-        nobody knows, and on a tag with a non-zero ``AUTHLIM`` that is unrecoverable.
+        Otherwise a typo in ``password`` would protect pages with a secret nobody
+        knows, which is unrecoverable on a tag with a non-zero ``AUTHLIM``.
 
-        The two protection settings are independent and both are needed for privacy.
-        ``AUTH0`` (``protect_from``) says *where* protection starts; ``PROT``
-        (``protect_reads``) says *what* it covers. On a factory tag ``PROT`` is clear,
-        so protection covers **writes only** and protected pages stay readable by
-        anyone with a phone. A password on its own is a tamper lock, not privacy.
+        The two settings are independent and both are needed for privacy. ``AUTH0``
+        (``protect_from``) says where protection starts; ``PROT`` (``protect_reads``)
+        says what it covers. On a factory tag ``PROT`` is clear, so protection covers
+        writes only and protected pages stay readable by anyone. ``AUTH0`` is written
+        last, so protection is never half-applied.
 
-        ``AUTH0`` is written last, so it is the single switch that turns protection on
-        and the tag is never left readable-but-write-protected by half a call.
-
-        Note what this still does *not* touch: ``AUTHLIM`` and ``CFGLCK`` are left
-        alone deliberately, since both can brick a tag permanently and neither belongs
-        behind a convenience method.
+        ``AUTHLIM`` and ``CFGLCK`` are deliberately not exposed: both can brick a tag
+        permanently.
         """
         if len(password) != 4:
             raise ValueError(f"an NTAG password is 4 bytes, got {len(password)}")
@@ -184,10 +174,10 @@ class Ultralight(Card):
         if protect_from is None and protect_reads is None:
             return
 
-        # Prove the password on a session that has not already been authenticated,
-        # so a tag that quietly kept the old one cannot pass this check. This guards
-        # PROT as much as AUTH0: setting PROT while AUTH0 is already in force would
-        # close reads behind a password the caller may not actually have set.
+        # Prove the password on a session that has not already been authenticated, so
+        # a tag still holding the old one cannot pass this check. Guards PROT as much
+        # as AUTH0: setting PROT while AUTH0 is in force would close reads behind a
+        # password the caller may not have set.
         self._reader.reset_card_connection()
         self.authenticate(password, pack=pack)
 
@@ -222,8 +212,8 @@ class Ultralight(Card):
     def _read_run(self, blocks: Sequence[int]) -> bytes:
         """Fetch up to four pages per APDU.
 
-        User pages are contiguous on this family, so a run can be asked for directly
-        instead of page by page -- one exchange per 16 bytes rather than four.
+        User pages are contiguous on this family, so a run costs one exchange per
+        16 bytes rather than four.
         """
         data = bytearray()
         position = 0
@@ -261,24 +251,22 @@ class NTAG216(Ultralight):
     storage_code: ClassVar[int | None] = 0x13
 
 
-#: Smallest first, so probing stops at the first size the tag actually is.
+#: Smallest first, so probing stops at the tag's actual size.
 _FAMILY: tuple[type[Ultralight], ...] = (Ultralight, NTAG213, NTAG215, NTAG216)
 
 
 def _by_version(reader: Reader) -> type[Ultralight] | None:
     """Identify from GET_VERSION, or ``None`` if the tag or reader cannot do it.
 
-    A plain Ultralight has no GET_VERSION and answers with an error, and a reader
-    with no passthrough cannot ask in the first place. Neither is a failure -- both
-    just mean the answer has to come from probing.
+    A plain Ultralight has no GET_VERSION, and a reader with no passthrough cannot
+    ask. Neither is a failure; the answer comes from probing instead.
     """
     try:
         version = reader.transceive(_GET_VERSION)
     except ReaderNotSupported:
         return None
     except NfcError:
-        # The tag refused the command, which deselects it: rebuild the session before
-        # anyone tries to read the thing.
+        # The tag refused the command, which deselects it: rebuild the session.
         reader.reset_card_connection()
         return None
 
@@ -295,16 +283,12 @@ def _by_version(reader: Reader) -> type[Ultralight] | None:
 def _by_probing(reader: Reader) -> type[Ultralight]:
     """Identify by finding where memory stops.
 
-    Reading the last page of a tag succeeds; reading one page further does not.
+    Reading the last page succeeds; reading one page further does not. Candidates are
+    tried smallest first and the walk stops at the first refusal, costing one failed
+    read whatever the size; each failure costs an RF session rebuild.
 
-    Candidates are tried smallest first and the walk stops at the first refusal, which
-    costs exactly one failed read however big the tag is. Going the other way would
-    fail two or three times on a small tag, and every failure means tearing the RF
-    session down and building it again.
-
-    An unrecognisable tag falls back to plain Ultralight -- the smallest layout in the
-    family, so the fallback can only ever under-use memory, never write past the end
-    of it.
+    An unrecognisable tag falls back to plain Ultralight, the smallest layout in the
+    family, so the fallback can only under-use memory, never write past its end.
     """
     identified: type[Ultralight] = Ultralight
     for driver in _FAMILY[1:]:
@@ -317,8 +301,8 @@ def _by_probing(reader: Reader) -> type[Ultralight]:
 def _page_readable(reader: Reader, page: int) -> bool:
     """Whether a page can be read, without treating a refusal as an error.
 
-    A refusal deselects the tag, so the session is rebuilt before returning -- without
-    that, the first probe past the end of memory would break every read that follows.
+    A refusal deselects the tag, so the session is rebuilt before returning; otherwise
+    the first probe past the end of memory breaks every read that follows.
     """
     if page > 0xFF:
         return False

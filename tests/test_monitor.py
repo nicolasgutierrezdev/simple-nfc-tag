@@ -1,7 +1,7 @@
 """The background monitor: arrival, departure, debounce, and clean shutdown.
 
-Threads make for flaky tests if you sleep and hope, so these drive the fake reader's
-presence directly and wait on events with a timeout rather than on the clock.
+These drive the fake reader's presence directly and wait on events with a timeout
+rather than on the clock, so no test depends on sleep timing.
 """
 
 from __future__ import annotations
@@ -166,8 +166,7 @@ class TestEvents:
 
 class TestDebounce:
     def test_a_parked_tag_is_reported_once(self, reader, recorder):
-        # The point of the debounce: a tag left on the reader must not fire on
-        # every single tick.
+        # A tag left on the reader must not fire on every tick.
         with monitor_for(reader, recorder, debounce=60):
             assert recorder.wait()
             for _ in range(20):

@@ -1,11 +1,8 @@
 """Exception hierarchy.
 
-Everything raised by this package derives from :class:`NfcError`, so a caller can
-wrap a whole tag interaction in one ``except NfcError`` without also swallowing
-programming errors.
-
-The three branches match the three layers: :class:`ReaderError` for the PC/SC
-reader, :class:`CardError` for the tag, :class:`FormatError` for the payload.
+Everything raised by this package derives from :class:`NfcError`. Three branches, one
+per layer: :class:`ReaderError` for the PC/SC reader, :class:`CardError` for the tag,
+:class:`FormatError` for the payload.
 """
 
 from __future__ import annotations
@@ -48,8 +45,8 @@ class NoReaderFound(ReaderError):
 class ReaderNotSupported(ReaderError):
     """The reader cannot do what was asked of it.
 
-    Raised by :meth:`Reader.transceive` on readers with no ISO 14443-3
-    passthrough, and by optional peripherals a given model does not have.
+    Raised by :meth:`Reader.transceive` on readers with no ISO 14443-3 passthrough,
+    and by peripherals a given model does not have.
     """
 
 
@@ -88,11 +85,9 @@ class CardFull(CardError):
 class WriteVerificationError(CardError):
     """A write reported success, but the tag does not hold the bytes that were sent.
 
-    The silent failure this package exists to remove. Measured on an ACR122U with an
-    NTAG213: a write to a page protected by ``AUTH0`` answers ``90 00`` and leaves the
-    page exactly as it was. The reader never passes the tag's refusal back, so the only
-    way to know a payload landed is to read it back and compare -- which is what
-    :meth:`Card.write_bytes` does unless ``verify=False`` turns it off.
+    Measured on an ACR122U with an NTAG213: a write to a page protected by ``AUTH0``
+    answers ``90 00`` and leaves the page unchanged. :meth:`Card.write_bytes` reads
+    back and compares unless ``verify=False``.
     """
 
     def __init__(self, offset: int, expected: bytes, actual: bytes) -> None:
@@ -108,14 +103,12 @@ class WriteVerificationError(CardError):
 
 
 def _describe_difference(offset: int, expected: bytes, actual: bytes) -> str:
-    """Name the first byte that differs, so the message points somewhere useful."""
+    """Name the first byte that differs."""
     if len(expected) != len(actual):
         return f"read back {len(actual)} bytes instead of {len(expected)}"
     for index, (want, got) in enumerate(zip(expected, actual, strict=True)):
         if want != got:
-            return (
-                f"byte {offset + index} should be 0x{want:02X} but the tag holds 0x{got:02X}"
-            )
+            return f"byte {offset + index} should be 0x{want:02X} but the tag holds 0x{got:02X}"
     return "the bytes match, which should not have raised"
 
 
@@ -140,9 +133,8 @@ _STATUS_WORDS = {
 class ApduError(CardError):
     """An APDU returned a status word other than ``90 00``.
 
-    The original scanner script discarded these, so an out-of-range address and an
-    unauthenticated sector both surfaced as ``None``. Every non-success status word
-    now reaches the caller with the command that produced it.
+    Carries both status bytes, a decoded meaning where one is known, and the command
+    that produced them.
     """
 
     def __init__(self, sw1: int, sw2: int, apdu: bytes | None = None) -> None:

@@ -1,8 +1,7 @@
-"""The MIFARE Classic access-bit codec: the encoding that bricks sectors.
+"""The MIFARE Classic access-bit codec.
 
-These are pure-function tests -- no reader, no tag -- because the encoding is where a
-single wrong bit locks a sector forever, so it is worth pinning down exhaustively and
-against the bytes real tags carry.
+Pure-function tests, no reader and no tag. A single wrong bit locks a sector forever,
+so the encoding is pinned exhaustively and against the bytes real tags carry.
 """
 
 from __future__ import annotations
@@ -52,19 +51,25 @@ class TestKnownHardwareValues:
 
 
 class TestRoundTrip:
-    @pytest.mark.parametrize("blocks", list(itertools.product(ALL_CONDITIONS, repeat=4)))
-    def test_every_combination_round_trips(self, blocks):
-        assert decode_access_bits(encode_access_bits(*blocks)) == blocks
+    # All 8**4 combinations, swept in-test rather than parametrized: 4096 ids per sweep
+    # bought nothing over one id that names the failing combination.
+    def test_every_combination_round_trips(self):
+        for blocks in itertools.product(ALL_CONDITIONS, repeat=4):
+            assert decode_access_bits(encode_access_bits(*blocks)) == blocks, blocks
 
-    @pytest.mark.parametrize("blocks", list(itertools.product(ALL_CONDITIONS, repeat=4)))
-    def test_every_encoding_passes_its_own_redundancy(self, blocks):
-        verify_redundancy(encode_access_bits(*blocks))
+    def test_every_encoding_passes_its_own_redundancy(self):
+        for blocks in itertools.product(ALL_CONDITIONS, repeat=4):
+            encoded = encode_access_bits(*blocks)
+            try:
+                verify_redundancy(encoded)
+            except ValueError as exc:  # pragma: no cover - a regression in the encoder
+                pytest.fail(f"{blocks} encoded to {encoded.hex()}: {exc}")
 
 
 class TestRedundancy:
     def test_all_zeros_is_rejected(self):
-        # 00 00 00 has every inverted copy wrong; silicon would reject it, so decoding
-        # must too rather than returning a plausible-looking condition.
+        # 00 00 00 has every inverted copy wrong; silicon rejects it, so decoding must
+        # too rather than returning a plausible-looking condition.
         with pytest.raises(ValueError, match="inconsistent"):
             verify_redundancy(bytes.fromhex("000000"))
 
@@ -127,6 +132,6 @@ class TestPermissions:
         assert access_bits.trailer_writers(TRANSPORT_TRAILER) == frozenset("A")
 
     def test_a_read_only_trailer_is_frozen_to_key_a(self):
-        # 011: only key B could rewrite it, and on an NDEF tag key B is unknown -- which
-        # is why the sector's keys are effectively permanent.
+        # 011: only key B could rewrite it, and on an NDEF tag key B is unknown, so the
+        # sector's keys are effectively permanent.
         assert access_bits.trailer_writers(READ_ONLY_TRAILER) == frozenset("B")

@@ -39,9 +39,8 @@ def card_for(image=FakeClassic1K, **image_kwargs):
 def corrupt_sector(image, sector, *, key_a, key_b, access):
     """Force one sector's trailer to an arbitrary state by writing raw bytes.
 
-    Silicon reaches these states through a trailer write; a test reaches them by
-    editing memory directly, which is enough because every later read and write
-    decodes the access bits straight back out of it.
+    Silicon reaches these states through a trailer write; editing memory directly is
+    enough, since every later read and write decodes the access bits back out of it.
     """
     trailer = (sector + 1) * image.blocks_per_sector - 1
     start = trailer * image.block_size
@@ -101,7 +100,7 @@ class TestGeometry:
         assert MifareClassic.is_trailer(block)
 
     def test_linear_offsets_skip_the_trailer(self):
-        # Offset 48 is the fourth block of the run, which is block 8 -- not block 7,
+        # Offset 48 is the fourth block of the run, which is block 8, not block 7,
         # which holds the keys.
         card, _ = card_for()
         assert card._user_blocks()[3] == 8
@@ -126,10 +125,10 @@ class TestAuthentication:
 
     def test_going_back_to_an_earlier_sector_reauthenticates(self):
         # Only one sector is open at a time, so returning to sector 1 costs another
-        # authentication. Believing it was still open would read 63 00 forever.
+        # authentication. A stale cache would read 63 00 forever.
         card, reader = card_for()
         card.read_bytes(0, 16)  # sector 1
-        card.read_bytes(48, 16)  # sector 2 -- closes sector 1
+        card.read_bytes(48, 16)  # sector 2, which closes sector 1
         card.read_bytes(0, 16)  # sector 1 again
         assert len(auths(reader)) == 3
         assert card.authenticated_sector == 1
@@ -162,7 +161,7 @@ class TestAuthentication:
 
     def test_a_refused_key_leaves_no_sector_claimed_as_open(self):
         # An authentication attempt closes the open sector whether it succeeds or not,
-        # so a failure must not leave the previous sector cached as usable.
+        # so a failure must not leave the previous sector cached.
         card, _ = card_for(key_a=CUSTOM_KEY, key_b=CUSTOM_KEY)
         card.keys = StaticKeyProvider(key=bytes([0x99]) * 6, key_type=KeyType.A)
         with pytest.raises(AuthenticationError):
@@ -271,7 +270,7 @@ class TestReadTrailer:
         assert trailer.gpb == 0x69
 
     def test_key_a_reads_back_as_zeros(self):
-        # The honest field is the access bits, never the keys.
+        # Only the access bits report what a trailer holds.
         card, _ = card_for()
         assert card.read_sector_trailer(2).key_a == bytes(6)
 
@@ -342,14 +341,19 @@ class TestWriteTrailer:
         card, _ = card_for()
         with pytest.raises(ValueError, match="6 bytes"):
             card.write_sector_trailer(
-                2, b"short", NEW_KEY_B, OPEN_ACCESS,
+                2,
+                b"short",
+                NEW_KEY_B,
+                OPEN_ACCESS,
                 i_understand_this_can_brick_the_sector=True,
             )
 
 
 class TestLockedSectorRecovery:
-    """The reference tag has a sector authentication opens but no read survives; these
-    reproduce that state from raw trailer bytes and exercise recovery both ways."""
+    """A sector authentication opens but no read survives, as on the reference tag.
+
+    Reproduced from raw trailer bytes, with recovery exercised both ways.
+    """
 
     def locked_card(self, *, access, key_b=bytes(6)):
         image = FakeClassic1K()
@@ -369,8 +373,8 @@ class TestLockedSectorRecovery:
         assert first_dead_data_block(trailer.access) == 0
 
     def test_recovery_when_the_trailer_still_writes(self):
-        # The reference tag's key B is 000000 and its trailer (011) still lets key B
-        # rewrite it: set_sector_keys should bring the sector back to transport.
+        # The reference tag's key B is 000000 and its trailer (011) lets key B rewrite
+        # it, so set_sector_keys brings the sector back to transport.
         card, _ = self.locked_card(access=(DEAD_DATA, DEAD_DATA, DEAD_DATA, READ_ONLY_TRAILER))
         card.set_sector_keys(
             1, FACTORY_KEY, FACTORY_KEY, i_understand_this_can_brick_the_sector=True
@@ -382,8 +386,7 @@ class TestLockedSectorRecovery:
         assert card.read_bytes(0, 9) == b"recovered"
 
     def test_a_truly_frozen_trailer_cannot_be_recovered(self):
-        # Access 101 lets no key rewrite the trailer: the write is refused and the
-        # verify never gets to claim success.
+        # Access 101 lets no key rewrite the trailer: the write is refused.
         card, _ = self.locked_card(access=(DEAD_DATA, DEAD_DATA, DEAD_DATA, (1, 0, 1)))
         with pytest.raises((ApduError, WriteVerificationError)):
             card.set_sector_keys(

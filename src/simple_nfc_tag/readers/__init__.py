@@ -1,12 +1,12 @@
 """Reader drivers and the factory that picks one.
 
-Everything specific to a *reader* -- APDU wrapping, vendor escape commands, PN532
-passthrough -- lives in this subpackage and is not visible to ``cards`` or ``codecs``.
+Everything reader-specific (APDU wrapping, vendor escape commands, PN532 passthrough)
+lives in this subpackage and is not visible to ``cards`` or ``codecs``.
 
-Driver selection matches a substring against the PC/SC reader name, because that name
-is the only thing PC/SC tells us before we open anything. An ACR122U shows up as
+Driver selection matches a substring against the PC/SC reader name, the only thing
+PC/SC reports before anything is opened. An ACR122U shows up as
 ``ACS ACR122U PICC Interface 0``; anything unrecognised falls back to
-:class:`PCSCReader`, which speaks only standardised commands and therefore works.
+:class:`PCSCReader`, which speaks only standardised commands.
 """
 
 from __future__ import annotations
@@ -33,9 +33,8 @@ def register_reader(driver: type[PCSCReader]) -> type[PCSCReader]:
     """Register a driver to be considered by :func:`open_reader`.
 
     The driver's ``match`` attribute is tested as a case-insensitive substring of the
-    PC/SC reader name. Later registrations are tried first, so a third party can
-    register a more specific driver for a reader this package already handles without
-    forking it.
+    PC/SC reader name. Later registrations are tried first, so a more specific driver
+    can override a built-in one.
     """
     if not getattr(driver, "match", ""):
         raise ValueError(f"{driver.__name__} needs a non-empty 'match' attribute to be registered")

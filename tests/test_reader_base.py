@@ -56,7 +56,7 @@ class TestApduConstruction:
 
 
 class TestStatusWords:
-    """Nothing but 90 00 is success. This is the bug the port exists to fix."""
+    """Nothing but 90 00 is success."""
 
     def test_non_success_raises(self):
         reader = StubReader([(b"", 0x63, 0x00)])
@@ -79,8 +79,8 @@ class TestStatusWords:
         assert (data, sw1, sw2) == (b"", 0x6A, 0x82)
 
     def test_short_read_is_an_error_not_a_truncated_result(self):
-        # A reader that answers 90 00 with fewer bytes than asked for would
-        # otherwise silently shorten a payload.
+        # A reader answering 90 00 with fewer bytes than asked for would otherwise
+        # shorten a payload silently.
         reader = StubReader([(bytes(8), 0x90, 0x00)])
         with pytest.raises(ApduError):
             reader.read_binary(4, 16)

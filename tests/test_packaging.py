@@ -22,9 +22,9 @@ def test_py_typed_ships_with_the_package():
 def test_importing_the_package_does_not_touch_pyscard():
     """The hardware-free path must not depend on a working PC/SC stack.
 
-    pyscard loads a compiled extension against libpcsclite. If importing this
-    package pulled it in, the test suite could not run where the plan promises it
-    runs -- CI with no reader, and no PC/SC daemon at all.
+    pyscard loads a compiled extension against libpcsclite. If importing this package
+    pulled it in, the suite could not run in CI, which has no reader and no PC/SC
+    daemon.
     """
     result = subprocess.run(
         [sys.executable, "-c", "import simple_nfc_tag, sys; print('smartcard' in sys.modules)"],

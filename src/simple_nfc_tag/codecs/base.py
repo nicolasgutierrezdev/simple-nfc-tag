@@ -1,14 +1,12 @@
 """The codec seam, and the lazy cursor codecs read through.
 
-A codec turns Python values into the bytes that sit in user memory and back. It never
-sees a block, a page or a sector: it is handed a flat byte stream and an offset, which
-is the whole point of the linear tier in :class:`~simple_nfc_tag.cards.base.Card`.
+A codec turns Python values into the bytes in user memory and back. It never sees a
+block, a page or a sector, only a flat byte stream and an offset.
 
-Reading goes through :class:`ByteCursor` rather than a ``bytes`` so that a read costs
-what it needs to and no more. Parsing a payload means fetching a few bytes, reading a
-tag and a length, and only then knowing how much more to ask for -- so the cursor
-fetches in chunks and lets the codec pull. Draining an 888-byte NTAG216 to read a
-12-byte payload would otherwise be 56 exchanges instead of one.
+Reading goes through :class:`ByteCursor` rather than a ``bytes``, so a read fetches
+only what the payload needs: a codec reads a tag and a length before it knows how much
+more to ask for. Draining an 888-byte NTAG216 for a 12-byte payload would cost 56
+exchanges instead of one.
 """
 
 from __future__ import annotations
@@ -72,8 +70,8 @@ class ByteCursor:
     def peek(self, length: int) -> bytes:
         """Look at the next ``length`` bytes without advancing.
 
-        Returns fewer bytes than asked for at the end of the range rather than raising:
-        callers peek to find out *whether* there is anything there.
+        Returns fewer bytes than asked for at the end of the range rather than
+        raising.
         """
         wanted = min(length, self.remaining)
         if wanted <= 0:
@@ -109,8 +107,8 @@ class ByteCursor:
         if held >= length:
             return
 
-        # Refill from the cursor, rounding the request up to a whole chunk so that a
-        # byte-at-a-time parse does not become a fetch-at-a-time parse.
+        # Round the request up to a whole chunk, so a byte-at-a-time parse does not
+        # become a fetch-at-a-time parse.
         want = max(length, self._chunk)
         want = min(want, self.remaining)
         data = self._fetch(self._position, want)
@@ -139,8 +137,8 @@ class Codec(Protocol):
     def detect(self, head: bytes) -> bool:
         """Whether this codec recognises a payload from its first few bytes.
 
-        A codec whose format is not self-describing -- raw bytes, for instance --
-        answers ``False`` and can then only be used when named explicitly.
+        A codec whose format is not self-describing answers ``False`` and can only be
+        used when named explicitly.
         """
         ...
 
@@ -183,16 +181,14 @@ def detect_codec(head: bytes) -> Codec | None:
 def decode_auto(cursor: ByteCursor, product: str = "tag") -> Any:
     """Decode a payload by working out its format from the bytes themselves.
 
-    This is what makes ``format=`` optional on a read, and what will keep tags written
-    today readable when an NDEF codec lands: the answer comes from the tag, not from an
-    argument the caller has to remember having passed a year ago.
+    Makes ``format=`` optional on a read: the answer comes from the tag rather than
+    from an argument the caller has to remember.
     """
     head = cursor.peek(min(8, cursor.remaining))
 
     first = next((byte for byte in head if byte != NULL), None)
     if first == NDEF:
-        # Recognised, deliberately not decoded. Saying so is far more use than letting
-        # some other codec make nonsense of it.
+        # Recognised, deliberately not decoded.
         raise NdefNotSupported
 
     codec = detect_codec(head)

@@ -1,9 +1,8 @@
-"""The raw codec: bytes in, bytes out, no framing at all.
+"""The raw codec: bytes in, bytes out, no framing.
 
-For tags whose layout is decided elsewhere -- a fixed struct, something another system
-wrote, the output of the script this package was ported from. Nothing is added, so
-nothing identifies it: a raw payload is indistinguishable from an empty tag or from
-somebody else's format, which is why ``format="raw"`` has to be given on read as well
+For tags whose layout is decided elsewhere: a fixed struct, or something another
+system wrote. Nothing is added, so nothing identifies it, and a raw payload is
+indistinguishable from an empty tag. ``format="raw"`` has to be given on read as well
 as on write.
 """
 
@@ -32,13 +31,13 @@ class RawCodec:
     def decode(self, cursor: ByteCursor) -> bytes:
         """Return the whole of user memory.
 
-        There is no length on the tag to say where the payload stops, so everything is
-        returned and the caller slices. This is the one read that costs a full drain.
+        Nothing on the tag says where the payload stops, so the caller slices. The one
+        read that costs a full drain.
         """
         return cursor.read_rest()
 
     def detect(self, head: bytes) -> bool:
-        """Never claims a payload: raw bytes carry nothing to recognise them by."""
+        """Never claims a payload: raw bytes carry nothing to recognise."""
         return False
 
 

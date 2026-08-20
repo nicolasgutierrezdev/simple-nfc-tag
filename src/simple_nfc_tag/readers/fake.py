@@ -1,27 +1,20 @@
 """An in-memory reader, for tests and for trying the library without hardware.
 
-This is a real part of the package, not a test fixture: every feature has to be
-usable without a reader attached, and that promise is only worth anything if the
-fake behaves like the silicon does. So the tag images here reproduce the parts that
-actually bite --
+Part of the package, not a test fixture: every feature has to be usable with no reader
+attached. The tag images reproduce the behaviour that bites:
 
-* an Ultralight read returns 16 bytes (four pages) however many you wanted, and
-  **wraps around** to page 0 at the end of memory;
-* reading past the last page answers ``63 00``, which is what an ACR122U reports and
-  is *not* the ``6A 82`` you might expect;
-* a plain Ultralight has no ``GET_VERSION``, so asking for one fails, exactly as it
-  does on a real one -- which is what makes the identification fallback testable;
-* a Classic block cannot be read until its sector has been authenticated, only **one**
-  sector is open at a time, and any authentication attempt -- successful or not --
-  closes the one before it;
-* and, the one that is easiest to miss: **a refused command deselects the tag**. Once
-  a tag has answered anything other than 90 00, it answers nothing at all -- a plain
-  retry of a perfectly valid read still fails -- until a ``GET UID`` re-runs
-  anticollision and brings it back. Code that probes, for the end of memory or for a
-  working key, has to recover after each failure, and modelling that here is what
-  makes the omission fail in a test rather than on someone's desk.
+* an Ultralight read returns 16 bytes (four pages) whatever was asked for, and wraps
+  around to page 0 at the end of memory;
+* reading past the last page answers ``63 00``, not ``6A 82``;
+* a plain Ultralight has no ``GET_VERSION``, so asking for one fails, which is what
+  makes the identification fallback testable;
+* a Classic block cannot be read until its sector is authenticated, only one sector is
+  open at a time, and any authentication attempt closes the one before it;
+* a refused command deselects the tag. After anything other than ``90 00`` the tag
+  answers nothing, including a retry of a valid read, until a ``GET UID`` re-runs
+  anticollision. Probing code has to recover after each failure.
 
-Both behaviours above were captured from an ACR122U with an NTAG213 on it.
+Captured from an ACR122U with an NTAG213 on it.
 """
 
 from __future__ import annotations
@@ -68,9 +61,9 @@ class _StatusWord(Exception):
     """Raised inside a tag image to answer with a status word other than 90 00.
 
     ``deselects`` says whether the refusal also drops the tag out of the RF session,
-    which is not the same question as which status word came back. Measured on an
-    ACR122U: an NTAG read past the end of memory deselects, while a Classic refusing
-    an unauthorised read or a wrong key does not -- and both answer ``63 00``.
+    which is a separate question from the status word. Measured on an ACR122U: an NTAG
+    read past the end of memory deselects, a Classic refusing an unauthorised read or a
+    wrong key does not, and both answer ``63 00``.
     """
 
     def __init__(self, sw1: int, sw2: int, deselects: bool = True) -> None:
@@ -84,10 +77,8 @@ class _SilentDrop(Exception):
     """Raised inside a tag image for a write that is refused but reported as success.
 
     Measured on an ACR122U with an NTAG213: a write to a page protected by ``AUTH0``
-    answers ``90 00`` and the page keeps its previous contents. The NAK does reach the
-    reader -- the tag deselects, so the *next* command answers ``63 00`` -- but ``FF D6``
-    never passes the refusal back to the caller. Modelling it here is what makes
-    ``verify=`` testable with no hardware on the desk.
+    answers ``90 00`` and the page keeps its contents. The tag does deselect, so the
+    next command answers ``63 00``, but ``FF D6`` never passes the refusal back.
     """
 
 
@@ -99,9 +90,8 @@ def _failed(deselects: bool = True) -> _StatusWord:
 class FakeTag:
     """An in-memory tag image.
 
-    Concrete on purpose: the default behaviour here is a plain memory array with no
-    keys and no vendor commands, which is exactly what an Ultralight is. Subclasses
-    add the parts that differ.
+    The default is a plain memory array with no keys and no vendor commands, which is
+    what an Ultralight is. Subclasses add the parts that differ.
     """
 
     #: PC/SC card name this tag reports in its ATR.
@@ -131,7 +121,7 @@ class FakeTag:
         end = block * self.block_size + length
         if end <= len(self.memory):
             return bytes(self.memory[block * self.block_size : end])
-        # Past the end of memory the tag wraps back to block 0 rather than failing.
+        # Past the end of memory the tag wraps back to block 0.
         data = bytearray(self.memory[block * self.block_size :])
         while len(data) < length:
             data.extend(self.memory[: length - len(data)])
@@ -233,8 +223,7 @@ class _NTAG(FakeUltralight):
             return self.version
         if payload[:1] == PWD_AUTH and len(payload) == 5:
             if self.password is None or payload[1:] != self.password:
-                # A refused password is NAKed, and that drops the tag out of the
-                # session -- the same rule as any other refusal.
+                # A refused password is NAKed, which drops the tag out of the session.
                 raise _failed()
             self.authenticated = True
             return self.pack
@@ -247,8 +236,7 @@ class _NTAG(FakeUltralight):
             self._require_password(block)
         data = bytearray(super().read(block, length))
 
-        # The password and its PACK answer as zeros however they were set: they are
-        # write-only, which is why nothing can back a password up off a tag.
+        # The password and its PACK are write-only and answer as zeros.
         for index, page in enumerate(range(block, block + length // self.block_size)):
             if page in (self.config_page + 2, self.config_page + 3):
                 start = index * self.block_size
@@ -257,7 +245,7 @@ class _NTAG(FakeUltralight):
 
     def write(self, block: int, data: bytes) -> None:
         # Reads of a protected page are refused out loud; writes are not. See
-        # _SilentDrop -- this asymmetry is the reason verify= exists.
+        # _SilentDrop: this asymmetry is why verify= exists.
         if self._is_protected(block):
             raise _SilentDrop
 
@@ -328,7 +316,7 @@ class FakeClassic1K(FakeTag):
         self._slots: dict[int, bytes] = {}
         #: The single open sector. A Classic authenticates one at a time.
         self._open_sector: int | None = None
-        #: Which key opened it, ``"A"`` or ``"B"`` -- the access conditions care.
+        #: Which key opened it, ``"A"`` or ``"B"``. The access conditions depend on it.
         self._open_key: str | None = None
 
     def _init_memory(self) -> None:
@@ -371,9 +359,8 @@ class FakeClassic1K(FakeTag):
     def _access(self, block: int) -> access_bits.AccessCondition:
         """The access condition governing one block, from its trailer.
 
-        Decoded straight out of ``memory`` so a test can corrupt a trailer by writing
-        raw bytes and have every later read and write honour it -- which is how the
-        locked-sector case is reproduced without a locked tag on the desk.
+        Decoded straight out of ``memory``, so a test can corrupt a trailer with raw
+        bytes and have every later read and write honour it.
         """
         trailer = (self.sector_of(block) + 1) * self.blocks_per_sector - 1
         start = trailer * self.block_size
@@ -387,18 +374,17 @@ class FakeClassic1K(FakeTag):
             raise _failed()
 
         # Enforce the read column of the access conditions. A data block the open key
-        # may not read answers 63 00 while staying selected -- the exact shape a
-        # locked sector shows: authentication succeeds, then every read is refused.
+        # may not read answers 63 00 while staying selected, which is what a locked
+        # sector looks like: authentication succeeds, then every read is refused.
         for block_number in range(block, block + length // self.block_size):
             if not self._is_trailer(block_number) and not self._may_read(block_number):
                 raise _failed(deselects=False)
 
         data = bytearray(super().read(block, length))
 
-        # Key A is never readable, and key B only under some conditions. Both answer as
-        # zeros otherwise, which is what a real trailer read looks like -- anyone
-        # checking that a write left the keys alone has to look at the access bits, not
-        # at what comes back where the keys live.
+        # Key A is never readable, key B only under some conditions; both answer as
+        # zeros otherwise. Checking that a write left the keys alone means looking at
+        # the access bits, not at where the keys live.
         for index, block_number in enumerate(range(block, block + length // self.block_size)):
             if self._is_trailer(block_number):
                 start = index * self.block_size
@@ -421,13 +407,13 @@ class FakeClassic1K(FakeTag):
         return self._open_key in writers
 
     def _key_b_readable(self, block: int) -> bool:
-        # Key B is exposed only where the trailer condition offers no write access with
-        # it -- the three conditions that treat its bytes as data rather than a secret.
+        # Key B is exposed only under the three conditions that treat its bytes as
+        # data rather than a secret.
         return self._access(block) in {(0, 0, 0), (0, 1, 0), (0, 0, 1)}
 
     def write(self, block: int, data: bytes) -> None:
         self._require_auth(block)
-        # A refused write answers 63 00 without deselecting -- on a Classic the reader
+        # A refused write answers 63 00 without deselecting: on a Classic the reader
         # rejects it locally rather than the tag NAKing over the air.
         if not self._may_write(block):
             raise _failed(deselects=False)
@@ -437,15 +423,15 @@ class FakeClassic1K(FakeTag):
         if block >= self.block_count:
             raise _failed()
         if self.sector_of(block) != self._open_sector:
-            # 63 00, not the 69 82 you might expect, and it leaves the tag selected.
+            # 63 00, not 69 82, and the tag stays selected.
             raise _failed(deselects=False)
 
 
 class FakeClassic4K(FakeClassic1K):
-    """A MIFARE Classic 4K, in its simple form: 256 blocks of four per sector.
+    """A MIFARE Classic 4K, simplified: 256 blocks, four per sector.
 
-    Real 4K silicon switches to 16-block sectors above sector 31; the driver knows
-    that, and this image is enough to exercise everything below the switch.
+    Real 4K silicon switches to 16-block sectors above sector 31. The driver knows
+    that; this image covers everything below the switch.
     """
 
     card_name = 0x0002
@@ -460,7 +446,7 @@ class FakeReader(Reader):
     '049aeee2307380'
 
     Presence is under the test's control: :meth:`present` puts a tag in the field and
-    :meth:`remove` takes it away, so a timeline of taps can be scripted exactly.
+    :meth:`remove` takes it away.
     """
 
     def __init__(
@@ -471,8 +457,8 @@ class FakeReader(Reader):
     ) -> None:
         super().__init__(name)
         self.tag = tag
-        #: Set False to model a plain PC/SC reader with no raw passthrough, which is
-        #: what forces identification down its fallback path.
+        #: Set False to model a plain PC/SC reader with no raw passthrough, forcing
+        #: identification down its fallback path.
         self.supports_transceive = supports_transceive
         #: Every APDU the reader was handed, in order.
         self.sent: list[bytes] = []
@@ -509,8 +495,8 @@ class FakeReader(Reader):
         if self.tag is None:
             return False
         self._selected = True
-        # A new RF session forgets everything the tag was told: an NTAG password and
-        # a Classic's open sector both last exactly one presence.
+        # A new RF session forgets everything the tag was told: an NTAG password and a
+        # Classic's open sector both last one presence.
         if isinstance(self.tag, _NTAG):
             self.tag.authenticated = False
         self.connections_opened += 1
@@ -527,9 +513,8 @@ class FakeReader(Reader):
     def transceive(self, payload: bytes) -> bytes:
         """Hand a raw command to the tag image.
 
-        Implemented rather than raising, because the fake stands in for a reader that
-        *does* have a passthrough; a tag that cannot answer the command still refuses
-        it, which is the interesting case.
+        The fake stands in for a reader that has a passthrough; a tag that cannot
+        answer the command still refuses it.
         """
         if not self.supports_transceive:
             raise ReaderNotSupported(f"{self.name} has no ISO 14443-3 passthrough")
@@ -559,8 +544,8 @@ class FakeReader(Reader):
 
         header, body = apdu[:5], apdu[5:]
 
-        # GET UID re-runs anticollision, which is what brings a deselected tag back;
-        # LOAD KEY never touches the radio at all. Everything else needs the tag.
+        # GET UID re-runs anticollision, which brings a deselected tag back; LOAD KEY
+        # never touches the radio. Everything else needs the tag.
         if not self._selected and header[:2] not in (
             bytes([0xFF, 0xCA]),
             bytes([0xFF, 0x82]),
@@ -584,8 +569,8 @@ class FakeReader(Reader):
                 tag.authenticate(body[2], KeyType(body[3]), body[4])
                 return b"", 0x90, 0x00
         except _SilentDrop:
-            # The whole point: a refusal the reader reports as success. The tag still
-            # deselects, which is the only trace left for anyone who looks.
+            # A refusal the reader reports as success. The tag still deselects, which
+            # is the only trace left.
             self._selected = False
             return b"", 0x90, 0x00
         except _StatusWord as status:

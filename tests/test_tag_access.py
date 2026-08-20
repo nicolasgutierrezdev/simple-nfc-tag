@@ -1,8 +1,7 @@
 """The cached-connection core: current_tag(), wait_for_tag(), and identification.
 
-The structural bug in the original script was rebuilding the RF session on every tick
-for a tag that never moved. These tests pin the opposite behaviour: one connection and
-one identification per card *presence*, however many times the caller asks.
+These pin one connection and one identification per card presence, however many times
+the caller asks.
 """
 
 from __future__ import annotations
@@ -64,8 +63,7 @@ class TestIdentify:
         with pytest.raises(UnsupportedCard) as excinfo:
             identify(reader)
         message = str(excinfo.value)
-        # The message has to carry enough to file a bug against: what the ATR said,
-        # and which tag it was.
+        # The message carries what the ATR said and which tag it was.
         assert "0xABCD" in message
         assert UID_A.hex().upper() in message
 
@@ -159,8 +157,7 @@ class TestCurrentTag:
         assert AnyTag.probes == 2
 
     def test_an_unsupported_tag_still_raises_on_every_call(self):
-        # A present-but-unknown tag is not an empty field, and must not be reported
-        # as one.
+        # A present-but-unknown tag is not an empty field.
         reader = StubReader(default=uid_reply(UID_A), atr=UNKNOWN_ATR)
         with pytest.raises(UnsupportedCard):
             reader.current_tag()

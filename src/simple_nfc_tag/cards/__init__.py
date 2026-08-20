@@ -1,9 +1,7 @@
 """Tag drivers and identification.
 
-Identification runs once per card presence, not once per read. It reads the PC/SC
-ATR, decodes the card name, and offers the tag to each registered driver in turn --
-replacing the original script's approach of trying an Ultralight read and treating a
-failure as proof the tag was a Classic.
+Identification runs once per card presence, not once per read: it reads the PC/SC ATR,
+decodes the card name, and offers the tag to each registered driver in turn.
 """
 
 from __future__ import annotations
@@ -25,9 +23,8 @@ _DRIVERS: list[type[Card]] = []
 def register_driver(driver: type[Card]) -> type[Card]:
     """Register a :class:`Card` subclass to be offered tags during identification.
 
-    Usable as a decorator. Later registrations are tried first, so registering a
-    driver is enough to override a built-in one for the tags it claims -- third
-    parties can support a tag this package gets wrong without forking it.
+    Usable as a decorator. Later registrations are tried first, so a registered
+    driver overrides a built-in one for the tags it claims.
     """
     if driver not in _DRIVERS:
         _DRIVERS.insert(0, driver)
@@ -42,9 +39,8 @@ def known_drivers() -> list[type[Card]]:
 def identify(reader: Reader) -> Card:
     """Work out what tag is on the reader and return a driver for it.
 
-    Raises :class:`UnsupportedCard` if no driver claims the tag -- deliberately, rather
-    than returning ``None``: a tag that is present but unrecognised is a different
-    situation from an empty field, and the caller can act on the difference.
+    Raises :class:`UnsupportedCard` if no driver claims the tag, which is a different
+    situation from an empty field.
     """
     atr = parse_atr(reader.get_atr())
     uid = reader.get_uid()
@@ -60,8 +56,8 @@ def identify(reader: Reader) -> Card:
     )
 
 
-# Imported for their registration side effect, at the bottom so the registry above
-# exists by the time they run. Order here is the order identification tries them.
+# Imported for their registration side effect, at the bottom so the registry exists
+# by the time they run. This order is the order identification tries them.
 from simple_nfc_tag.cards import mifare_classic, ultralight  # noqa: E402
 
 __all__ += ["mifare_classic", "ultralight"]

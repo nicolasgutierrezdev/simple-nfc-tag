@@ -1,9 +1,8 @@
 """Test doubles shared across the suite.
 
-These exercise the abstractions themselves -- the APDUs a reader builds, the status
-words it rejects, the block arithmetic a card does. They are deliberately thin: the
-in-memory tag images that behave like real silicon live in ``FakeReader``, in the
-package proper, because that is a feature users get too.
+These exercise the abstractions themselves: the APDUs a reader builds, the status
+words it rejects, the block arithmetic a card does. The in-memory tag images that
+behave like real silicon live in ``FakeReader``, in the package proper.
 """
 
 from __future__ import annotations
@@ -33,8 +32,8 @@ CLASSIC_1K_ATR = bytes.fromhex("3B8F8001804F0CA000000306030001000000006A")
 class StubTransport:
     """The six :class:`Reader` hooks, backed by a script instead of hardware.
 
-    Mixed in *before* a reader class so its hooks win, which is what lets the same
-    transport sit under the base ``Reader`` and under the ACR122U driver.
+    Mixed in before a reader class so its hooks win, which lets the same transport sit
+    under the base ``Reader`` and under the ACR122U driver.
     """
 
     def __init__(
@@ -110,9 +109,8 @@ def pn532_reply(data: bytes = b"", status: int = 0x00) -> tuple[bytes, int, int]
 class MemoryCard(Card):
     """A card whose blocks are a dict, for exercising the linear tier.
 
-    The default layout has a hole in it -- block 7 is missing, the way a Classic
-    sector trailer is -- so any arithmetic that assumes user blocks are contiguous
-    fails here rather than on someone's tag.
+    The default layout has a hole in it: block 7 is missing, the way a Classic sector
+    trailer is, so arithmetic that assumes contiguous user blocks fails here.
     """
 
     product = "MemoryCard"
@@ -156,7 +154,7 @@ def driver_registered(driver: type[Card]) -> Iterator[type[Card]]:
         cards._DRIVERS.remove(driver)
 
 
-# Re-exported so tests can reach the ABC without a second import path.
+# Re-exported so tests reach the ABC without a second import path.
 __all__ = [
     "CLASSIC_1K_ATR",
     "SUCCESS",

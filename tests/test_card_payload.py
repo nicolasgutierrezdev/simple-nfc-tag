@@ -81,7 +81,7 @@ class TestRawFormat:
             tag.read()
 
     def test_reading_a_tag_written_by_the_original_script(self):
-        # The regression the plan asks for: a fixed 16-byte layout, no framing.
+        # A fixed 16-byte layout, no framing.
         payload = b"cf12ac" + (42).to_bytes(2, "big") + bytes(range(8))
         tag, _ = tag_for()
         tag.write(payload, format="raw")
@@ -105,7 +105,7 @@ class TestCapacity:
         assert excinfo.value.available == 48
 
     def test_nothing_is_written_when_the_payload_does_not_fit(self):
-        # A half-written payload would destroy what was there for no gain.
+        # A half-written payload would destroy what was there.
         image = FakeUltralight()
         tag = identify(FakeReader(image))
         tag.write(["keep me"])

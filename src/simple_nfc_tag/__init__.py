@@ -1,8 +1,7 @@
-"""simple-nfc-tag: a tag-agnostic NFC data storage library built on PC/SC.
+"""simple-nfc-tag: tag-agnostic NFC data storage over PC/SC.
 
-Store and retrieve your own data on MIFARE Classic, Ultralight and NTAG21x tags
-through any PC/SC reader, without hand-writing APDUs or caring which chip is on the
-tag.
+Reads and writes your own data on MIFARE Classic, Ultralight and NTAG21x tags through
+any PC/SC reader.
 
     >>> import simple_nfc_tag as snt                       # doctest: +SKIP
     >>> with snt.connect() as reader:                      # doctest: +SKIP
@@ -10,8 +9,6 @@ tag.
     ...     tag.write(["ABC123", 42])
     ...     tag.read()
     ['ABC123', 42]
-
-See the README for the architecture and the wire format.
 """
 
 from __future__ import annotations
@@ -72,16 +69,13 @@ __version__ = "0.1.0.dev0"
 
 
 def connect(name: str | None = None) -> Reader:
-    """Open the reader and return it, ready for tag access.
+    """Open a reader and return it, ready for tag access.
 
-    The driver is chosen from the PC/SC reader name, so an ACR122U gets its PN532
-    passthrough and buzzer control while anything else falls back to standard PC/SC.
+    The driver is chosen from the PC/SC reader name; anything unrecognised falls back
+    to standard PC/SC.
 
     :param name: a substring of the PC/SC reader name. Omit to take the first reader
         attached.
-
-    >>> with connect() as reader:                     # doctest: +SKIP
-    ...     tag = reader.wait_for_tag(timeout=5)
     """
     return open_reader(name).connect()
 

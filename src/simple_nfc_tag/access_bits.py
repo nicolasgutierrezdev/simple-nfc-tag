@@ -1,20 +1,16 @@
-"""MIFARE Classic sector-trailer access bits: the three bytes that brick a sector.
+"""MIFARE Classic sector-trailer access bits.
 
-A Classic sector trailer is sixteen bytes -- key A, three access-condition bytes, a
-general-purpose byte, then key B. The three access bytes are the dangerous part.
-They encode, for each of the sector's four blocks, a three-bit condition ``(C1, C2,
-C3)`` that says who may read it, write it, and (for the trailer) rewrite the keys.
+A sector trailer is sixteen bytes: key A, three access-condition bytes, a
+general-purpose byte, key B. The access bytes encode, for each of the sector's four
+blocks, a three-bit condition ``(C1, C2, C3)``: who may read it, write it, and (for
+the trailer) rewrite the keys.
 
-What makes them brick tags is the redundancy: each of the twelve bits is stored
-*twice*, once plain and once inverted, spread across the three bytes. Silicon checks
-the two copies agree before it honours the trailer, and a trailer whose copies
-disagree is rejected -- which, once written, can leave a sector that no key will ever
-open again. So this module encodes the redundancy correctly and refuses to decode a
-trailer whose copies do not match, rather than guessing what was meant.
+Each of the twelve bits is stored twice, once plain and once inverted. Silicon rejects
+a trailer whose copies disagree, and a rejected trailer can leave a sector no key will
+open again, so a mismatch raises here rather than decoding to a guess.
 
-This is a leaf module on purpose, a sibling of :mod:`keys`: it is pure wire format
-with no card or reader behind it, so both the Classic driver and the in-memory tag
-image can share one definition of the encoding instead of each carrying their own.
+A leaf module, sibling of :mod:`keys`: pure wire format, shared by the Classic driver
+and the in-memory tag image.
 """
 
 from __future__ import annotations
@@ -45,17 +41,16 @@ AccessCondition = tuple[int, int, int]
 TRANSPORT_DATA: AccessCondition = (0, 0, 0)
 #: A trailer key A can rewrite: the factory transport configuration.
 TRANSPORT_TRAILER: AccessCondition = (0, 0, 1)
-#: A trailer whose keys can never be changed again; access bits stay readable.
-#: This is what an NDEF-formatted read-only sector uses -- not a fault.
+#: A trailer whose keys can never change again; access bits stay readable. What an
+#: NDEF-formatted read-only sector uses.
 READ_ONLY_TRAILER: AccessCondition = (0, 1, 1)
-#: A data block no key can read or write. A block in this state is inert; writing a
-#: trailer that puts one here is refused, because it has no legitimate use and is the
-#: exact state a corrupted sector lands in.
+#: A data block no key can read or write. Inert; writing a trailer that puts a data
+#: block here is refused.
 DEAD_DATA: AccessCondition = (1, 1, 1)
 
 
 def _nibble(bits: Iterable[int]) -> int:
-    """Pack a bit per block -- blocks 0..3, block 3 as the high bit -- into a nibble."""
+    """Pack a bit per block into a nibble: blocks 0..3, block 3 as the high bit."""
     value = 0
     for block, bit in enumerate(bits):
         value |= (bit & 1) << block
@@ -75,9 +70,8 @@ def encode_access_bits(
 ) -> bytes:
     """Encode the four blocks' conditions into the trailer's three access bytes.
 
-    ``block0``..``block2`` are the sector's data blocks; ``trailer`` is the trailer
-    itself (block 3). The result carries each bit both plain and inverted, the way the
-    silicon expects.
+    ``block0``..``block2`` are the data blocks; ``trailer`` is block 3. Each bit is
+    carried both plain and inverted.
 
     >>> encode_access_bits((0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 1)).hex()
     'ff0780'
@@ -103,8 +97,7 @@ def encode_access_bits(
 def verify_redundancy(access_bytes: bytes) -> None:
     """Raise unless the plain and inverted copies of every bit agree.
 
-    This is the check the silicon makes. A trailer that fails it can brick the sector,
-    so it is run before any decode and before any write.
+    The check the silicon makes. Run before every decode and every write.
 
     >>> verify_redundancy(bytes.fromhex("ff0780"))
     >>> verify_redundancy(bytes.fromhex("000000"))  # doctest: +ELLIPSIS
@@ -134,7 +127,7 @@ def decode_access_bits(
     """Decode the three access bytes into the four blocks' conditions.
 
     Raises :class:`ValueError` via :func:`verify_redundancy` if the redundant copies
-    disagree, rather than returning a condition the tag would not honour.
+    disagree.
 
     >>> decode_access_bits(bytes.fromhex("ff0780"))
     ((0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 1))
@@ -162,8 +155,8 @@ _DATA_PERMISSIONS: dict[AccessCondition, tuple[frozenset[str], frozenset[str]]] 
     (1, 1, 1): (frozenset(), frozenset()),
 }
 
-#: Which keys may *write the trailer block*, per trailer condition. The keys that can
-#: rewrite the sector's keys and access bits; empty means the trailer is frozen.
+#: Which keys may write the trailer block, per trailer condition. Empty means the
+#: trailer is frozen.
 _TRAILER_WRITERS: dict[AccessCondition, frozenset[str]] = {
     (0, 0, 0): frozenset("A"),
     (0, 1, 0): frozenset(),
@@ -191,11 +184,10 @@ def trailer_writers(condition: AccessCondition) -> frozenset[str]:
 def first_dead_data_block(
     conditions: tuple[AccessCondition, AccessCondition, AccessCondition, AccessCondition],
 ) -> int | None:
-    """The index of the first data block that no key could read or write, or ``None``.
+    """Index of the first data block no key could read or write, or ``None``.
 
-    A block whose condition permits neither reads nor writes is inert -- exactly the
-    state a corrupted sector reaches. The trailer (index 3) is not checked: a frozen
-    trailer is a legitimate read-only configuration, not a dead block.
+    The trailer (index 3) is not checked: a frozen trailer is a legitimate read-only
+    configuration, not a dead block.
     """
     for index, condition in enumerate(conditions[:3]):
         readers, writers = data_permissions(condition)

@@ -47,7 +47,7 @@ class TestAuthenticate:
 
     def test_a_wrong_pack_is_an_error_even_though_the_password_worked(self):
         # A tag that takes the password but answers with the wrong PACK is not the
-        # tag you think it is.
+        # tag it claims to be.
         tag, _, _ = protected_tag()
         with pytest.raises(AuthenticationError, match="does not hold the password"):
             tag.authenticate(PASSWORD, pack=b"\x00\x00")
@@ -93,22 +93,21 @@ class TestAuthenticate:
 class TestProtection:
     def test_protection_covers_writes_but_not_reads_by_default(self):
         # AUTH0 alone protects writes only. Protected pages stay readable by anyone
-        # until the PROT bit in CFG1 is set as well, which is the trap hiding inside
-        # "I password-protected my tag".
+        # until the PROT bit in CFG1 is set as well.
         tag, _, image = protected_tag()
         image.memory[PROTECT_FROM * 4 : PROTECT_FROM * 4 + 4] = b"OPEN"
 
         assert tag.read_bytes(offset_of(PROTECT_FROM), 4) == b"OPEN"
 
-        # And the refused write is not reported as one -- the reader answers 90 00 --
-        # so only reading the bytes back afterwards catches it.
+        # The refused write is not reported as one: the reader answers 90 00, so only
+        # reading the bytes back catches it.
         with pytest.raises(WriteVerificationError):
             tag.write_bytes(offset_of(PROTECT_FROM), b"MINE")
         assert bytes(image.memory[PROTECT_FROM * 4 : PROTECT_FROM * 4 + 4]) == b"OPEN"
 
     def test_a_refused_write_looks_like_success_with_verify_off(self):
-        # The behaviour verify= exists to cover: without the read-back nothing at all
-        # tells the caller the bytes never landed.
+        # What verify= covers: without the read-back nothing tells the caller the
+        # bytes never landed.
         tag, _, image = protected_tag()
         image.memory[PROTECT_FROM * 4 : PROTECT_FROM * 4 + 4] = b"OPEN"
 
@@ -141,8 +140,7 @@ class TestProtection:
         assert bytes(image.memory[16:20]) == b"OPEN"
 
     def test_the_password_is_forgotten_when_the_tag_leaves_the_field(self):
-        # Authentication lasts one RF session, which is the same lifetime as the
-        # card object -- so a caller who caches a tag across a removal is wrong twice.
+        # Authentication lasts one RF session, the same lifetime as the card object.
         tag, reader, image = protected_tag()
         tag.authenticate(PASSWORD)
         assert image.authenticated
@@ -156,7 +154,7 @@ class StubbornTag(FakeNTAG213):
     """A tag that quietly ignores writes to its password page.
 
     Stands in for anything that leaves the stored password other than what the caller
-    believes it to be -- a locked configuration, a counterfeit, a flaky write.
+    believes: a locked configuration, a counterfeit, a flaky write.
     """
 
     def write(self, block: int, data: bytes) -> None:
@@ -183,7 +181,7 @@ class TestSetPassword:
             tag.authenticate(PASSWORD)
 
     def test_the_password_cannot_be_read_back(self):
-        # The whole reason a password has to be written down somewhere else.
+        # A password can only be recorded outside the tag.
         tag, reader, _ = protected_tag(protect_from=None)
         tag.set_password(NEW_PASSWORD, NEW_PACK)
 
@@ -246,8 +244,7 @@ class TestSetPassword:
         assert image.protect_from == PROTECT_FROM
 
     def test_setting_prot_actually_closes_reads_on_the_tag(self):
-        # The behaviour the bit exists for, checked through the public read path
-        # rather than by looking at CFG1.
+        # Checked through the public read path rather than by looking at CFG1.
         tag, reader, image = protected_tag(protect_from=None)
         image.memory[PROTECT_FROM * 4 : PROTECT_FROM * 4 + 4] = b"MINE"
 
@@ -274,8 +271,8 @@ class TestSetPassword:
         assert after[1:] == before[1:]
 
     def test_prot_is_not_set_when_the_password_did_not_take(self):
-        # Same guard as AUTH0: closing reads behind a password the tag never stored
-        # is the unrecoverable direction.
+        # Same guard as AUTH0: closing reads behind a password the tag never stored is
+        # the unrecoverable direction.
         image = StubbornTag(password=PASSWORD, pack=PACK)
         tag = identify(FakeReader(image))
 
@@ -294,9 +291,8 @@ class TestSetPassword:
         assert reader.read_binary(config + 1, 4)[0] == 0x83
 
     def test_protection_is_not_enabled_when_the_password_did_not_take(self):
-        # The check that matters. If the tag kept its old password, enabling
-        # protection would lock pages behind a secret nobody has -- and on a tag with
-        # a non-zero AUTHLIM there is no way back.
+        # If the tag kept its old password, enabling protection would lock pages behind
+        # a secret nobody has, and a non-zero AUTHLIM makes that permanent.
         image = StubbornTag(password=PASSWORD, pack=PACK)
         tag = identify(FakeReader(image))
 

@@ -1,18 +1,18 @@
-"""Manual hardware check. Never run in CI -- it needs a reader and a tag.
+"""Manual hardware check. Needs a reader and a tag. Never run in CI.
 
-Read-only by default: it identifies whatever tag is on the reader and dumps the
-first bytes of user memory.
+Read-only by default: identifies the tag on the reader and dumps the first bytes of
+user memory.
 
     uv run python examples/roundtrip.py
 
-Pass --write to do the full round trip. That **overwrites user memory**, so it backs
-the tag up first, writes a pattern, re-reads it after a removal and re-presentation,
-and puts the original bytes back:
+``--write`` does the full round trip. It **overwrites user memory**: backs the tag up,
+writes a pattern, re-reads it after a removal and re-presentation, then restores the
+original bytes.
 
     uv run python examples/roundtrip.py --write
 
-The removal step is the point of the exercise: it proves the data survives the RF
-session ending, rather than being read back out of a cache.
+The removal step proves the data survives the RF session ending rather than coming
+back out of a cache.
 """
 
 from __future__ import annotations

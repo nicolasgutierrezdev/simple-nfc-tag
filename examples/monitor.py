@@ -2,14 +2,11 @@
 
     uv run python examples/monitor.py
 
-Every line is timestamped from when the monitor started, so the gap between lifting a
-tag and seeing REMOVED is the real detection latency.
+Lines are timestamped from when the monitor started, so the gap between lifting a tag
+and seeing REMOVED is the detection latency.
 
-``--poll`` is deliberately long by default. A PC/SC reader is asked to wake the thread
-when the card presence actually changes, so nothing should ever have to wait for the
-poll interval to expire -- if you lift the tag and see REMOVED a fraction of a second
-later despite a 30-second poll interval, that is the driver notification working. Pass
-``--poll 1`` to compare against something closer to a plain polling loop.
+``--poll`` defaults to 30s. A PC/SC reader wakes the thread on a presence change, so
+REMOVED still appears immediately; ``--poll 1`` compares against a plain polling loop.
 """
 
 from __future__ import annotations

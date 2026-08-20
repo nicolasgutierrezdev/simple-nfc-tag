@@ -1,13 +1,11 @@
 """Generic PC/SC reader driver, built on pyscard.
 
-This is the baseline every other driver specialises. It speaks only standardised
-PC/SC part-3 pseudo-APDUs, so it works with any contactless reader that exposes
-them -- and it deliberately does *not* implement :meth:`~Reader.transceive`, which
-has no standard form.
+The baseline every other driver specialises. It speaks only standardised PC/SC part-3
+pseudo-APDUs, so it works with any contactless reader that exposes them, and does not
+implement :meth:`~Reader.transceive`, which has no standard form.
 
-pyscard is imported lazily. The package is a hard dependency, but keeping the import
-out of module scope means an environment with a broken or missing PC/SC stack still
-imports ``simple_nfc_tag``, so the hardware-free test path never depends on it.
+pyscard is imported lazily, so an environment with a broken or missing PC/SC stack
+still imports ``simple_nfc_tag`` and the hardware-free test path runs.
 """
 
 from __future__ import annotations
@@ -53,9 +51,8 @@ def list_readers() -> list[str]:
     smartcard = _import_pyscard()
     try:
         return [str(reader) for reader in smartcard.System.readers()]
-    # pyscard raises undocumented exception types out of the PC/SC context; all of
-    # them mean the same thing to a caller, and none should escape as a raw pyscard
-    # class.
+    # pyscard raises undocumented exception types out of the PC/SC context; they all
+    # mean the same thing here, and none should escape as a raw pyscard class.
     except Exception as exc:
         raise ReaderError(f"could not query the PC/SC subsystem: {exc}") from exc
 
@@ -67,8 +64,8 @@ class PCSCReader(Reader):
         reader attached.
     """
 
-    #: Substring the factory matches against the PC/SC reader name. Empty on this
-    #: class: it is the fallback every reader gets, not one that claims a model.
+    #: Substring the factory matches against the PC/SC reader name. Empty here: this
+    #: is the fallback, not a driver that claims a model.
     match: ClassVar[str] = ""
 
     def __init__(self, name: str | None = None) -> None:
@@ -127,8 +124,7 @@ class PCSCReader(Reader):
         connection, self._connection = self._connection, None
         if connection is None:
             return
-        # Best effort: the usual reason for a disconnect to fail is that the tag is
-        # already gone, which is exactly the state being cleaned up.
+        # Best effort: a failed disconnect usually means the tag is already gone.
         with contextlib.suppress(Exception):
             connection.disconnect()
 
@@ -154,18 +150,15 @@ class PCSCReader(Reader):
     def wait_for_change(self, timeout: float | None = None) -> bool:
         """Block in the PC/SC driver until this reader's card presence changes.
 
-        ``SCardGetStatusChange`` parks the thread in the driver, so a monitor sitting
-        over an empty reader costs nothing at all and notices a tap in milliseconds,
-        rather than waking on a timer and finding nothing every time.
+        ``SCardGetStatusChange`` parks the thread in the driver, so an idle monitor
+        costs nothing and notices a tap in milliseconds.
 
         Falls back to the base class's sleep if the PC/SC subsystem will not play
-        along -- a missing context, a driver without notification support -- because a
-        monitor that polls slowly is far better than one that does not run.
+        along: a missing context, or a driver without notification support.
         """
         try:
             return self._wait_via_pcsc(timeout)
-        # Any failure here is survivable: the base class's sleep is always correct,
-        # just costlier.
+        # Survivable: the base class's sleep is always correct, just costlier.
         except Exception:
             self._release_status_context()
             return super().wait_for_change(timeout)
@@ -186,7 +179,7 @@ class PCSCReader(Reader):
 
         _, event_state, _atr = states[0]
         # The driver ORs in a "changed" bit; strip it before storing, or the next call
-        # is comparing against a state the driver never reports.
+        # compares against a state the driver never reports.
         self._status_state = event_state & ~scard.SCARD_STATE_CHANGED
         return bool(event_state & scard.SCARD_STATE_CHANGED)
 
@@ -227,7 +220,7 @@ def _translate(exc: BaseException) -> NfcError:
     if code == _SCARD_E_NO_SMARTCARD:
         return NoCardPresent("no tag on the reader")
     if code is None:
-        # Older pyscard builds only report the condition in the message text.
+        # Older pyscard builds report the condition only in the message text.
         text = str(exc).lower()
         if "removed" in text or "reset" in text:
             return CardRemoved("the tag left the field during the exchange")

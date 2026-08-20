@@ -1,7 +1,7 @@
 """Inner values: the type registry and each type's encoding.
 
-Lengths are not tested here -- there is only one length rule in this file format and
-it lives with the framing, in test_codecs.py.
+Lengths are not tested here: the format has one length rule, and it lives with the
+framing, in test_codecs.py.
 """
 
 from __future__ import annotations

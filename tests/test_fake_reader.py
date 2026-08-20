@@ -1,8 +1,8 @@
 """The in-memory reader.
 
-These tests are really about the tag images: if the fake does not fail where silicon
-fails, every test built on it is worthless. The behaviours pinned here were captured
-from an ACR122U with an NTAG213 on it.
+These test the tag images: the fake has to fail where silicon fails, or every test
+built on it means nothing. The behaviours pinned here were captured from an ACR122U
+with an NTAG213 on it.
 """
 
 from __future__ import annotations
@@ -103,7 +103,7 @@ class TestUltralightImage:
         assert reader.transceive(b"\x60")[6] == storage
 
     def test_a_plain_ultralight_has_no_get_version(self):
-        # Which is exactly why identification needs a fallback.
+        # Which is why identification needs a fallback.
         reader = FakeReader(FakeUltralight())
         with pytest.raises(ApduError):
             reader.transceive(b"\x60")
@@ -185,7 +185,7 @@ class TestClassicImage:
         assert trailer[:6] == bytes(6)
         assert trailer[6:10] == bytes([0xFF, 0x07, 0x80, 0x69])
         assert trailer[10:] == FACTORY_KEY
-        # The key really is still there, it just does not come back over the air.
+        # The key is still there; it does not come back over the air.
         assert bytes(tag.memory[7 * 16 : 7 * 16 + 6]) == FACTORY_KEY
 
 

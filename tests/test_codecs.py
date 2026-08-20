@@ -54,8 +54,8 @@ class TestLengths:
         assert framing.decode_length(encoded) == (length, len(encoded))
 
     def test_inner_values_use_the_same_rule_as_the_outer_block(self):
-        # The whole point of unifying: a length is a length wherever it appears. A
-        # 255-byte value is 0xFF 0x00 0xFF at both tiers, not 0x81 0xFF at one of them.
+        # A length is a length wherever it appears: a 255-byte value is FF 00 FF at
+        # both tiers, not 81 FF at one of them.
         payload = "x" * 255
         encoded = TLV.encode([payload])
         assert encoded[:1] == bytes([framing.PROPRIETARY])
@@ -119,8 +119,7 @@ class TestCursor:
         assert cursor.fetched == 16
 
     def test_a_small_read_does_not_drain_the_tag(self):
-        # The whole reason the cursor exists: reading a 12-byte payload off an
-        # 888-byte NTAG216 must not fetch 888 bytes.
+        # Reading a 12-byte payload off an 888-byte NTAG216 must not fetch 888 bytes.
         cursor = cursor_over(b"\xfd\x0b" + bytes(886), chunk=16, size=888)
         cursor.read(14)
         assert cursor.fetched <= 32
@@ -233,7 +232,7 @@ class TestRaw:
             RAW.encode(["not", "bytes"])
 
     def test_raw_never_claims_a_payload(self):
-        # Otherwise it would win every auto-detected read.
+        # Otherwise raw would win every auto-detected read.
         assert not RAW.detect(b"\xfd\x0b")
         assert not RAW.detect(b"anything")
 

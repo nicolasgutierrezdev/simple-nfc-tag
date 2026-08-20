@@ -7,8 +7,8 @@ import pytest
 from simple_nfc_tag.exceptions import CardFull
 from support import MemoryCard
 
-# MemoryCard's default layout: user blocks 4, 5, 6, 8 -- block 7 stands in for a
-# sector trailer, so linear offset 12 lands on block 8, not block 7.
+# MemoryCard's default layout: user blocks 4, 5, 6, 8. Block 7 stands in for a sector
+# trailer, so linear offset 12 lands on block 8.
 
 
 class TestReadBytes:

@@ -1,19 +1,16 @@
 """MIFARE Classic 1K and 4K.
 
-Two things make the Classic different from everything else here.
+Two differences from the rest of the family.
 
-**Authentication.** A sector answers nothing at all until a key for it has been
-proved, and the only way to find the right key is to try one and see. Authentication
-is per *sector*, not per block, so the result is worth caching -- the original script
-re-authenticated before every single block read, wasting three round trips per sector.
-But only **one sector is open at a time**: authenticating the next one closes the
-last, so what is cached is the single open sector rather than a set of them.
+**Authentication.** A sector answers nothing until a key for it is proved, and the
+only way to find the key is to try one. Authentication is per sector, not per block,
+so it is cached: one authentication per sector instead of one per block. Only one
+sector is open at a time, so the cache holds a single sector, not a set.
 
-**Holes in the address space.** The last block of every sector holds the keys, and
-writing to it with the wrong bytes bricks the sector permanently. Block 0 holds the
-UID and is read-only. Neither ever appears in the user-block list, so the linear tier
-above cannot address them even by accident -- and sector 0 is skipped entirely, which
-also leaves room for the MAD that MIFARE Classic NDEF will need.
+**Holes in the address space.** The last block of every sector holds the keys, and a
+wrong write there bricks the sector permanently. Block 0 holds the UID and is
+read-only. Neither appears in the user-block list, and sector 0 is skipped entirely,
+which leaves room for the MAD that MIFARE Classic NDEF needs.
 """
 
 from __future__ import annotations
@@ -37,7 +34,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 __all__ = ["Classic1K", "Classic4K", "MifareClassic", "SectorTrailer"]
 
 #: Blocks 0-3 are sector 0: the UID block and the manufacturer data. User data starts
-#: at block 4, matching what tags written by the original script already contain.
+#: at block 4.
 _FIRST_USER_SECTOR = 1
 
 #: A 4K switches to 16-block sectors above this block address.
@@ -57,11 +54,9 @@ _TRAILER_LEN = 16
 class SectorTrailer:
     """A decoded sector trailer.
 
-    ``key_a`` is included for completeness but is **always zeros as read from a tag**:
-    key A is write-only on every access condition, so what comes back where it lives
-    says nothing about what is actually stored. To tell whether a trailer write landed,
-    look at :attr:`access`, never at the keys -- which is what
-    :meth:`MifareClassic.write_sector_trailer` does.
+    ``key_a`` always reads back as zeros from a real tag: key A is write-only under
+    every access condition. To tell whether a trailer write landed, look at
+    :attr:`access`, never at the keys.
     """
 
     #: Key A as it read back: zeros on real silicon, whatever was written on the fake.
@@ -184,12 +179,11 @@ class MifareClassic(Card):
     def read_sector_trailer(self, sector: int) -> SectorTrailer:
         """Read and decode a sector's trailer.
 
-        Authenticates the sector through the usual key policy, then decodes the three
-        access bytes -- raising :class:`ValueError` if their redundant copies disagree,
-        which is how a corrupted trailer shows up rather than as plausible nonsense.
+        Authenticates through the usual key policy, then decodes the three access
+        bytes, raising :class:`ValueError` if their redundant copies disagree.
 
-        Remember the keys read back as zeros unless the access condition exposes them;
-        :attr:`SectorTrailer.access` is the honest field.
+        The keys read back as zeros unless the access condition exposes them; use
+        :attr:`SectorTrailer.access`.
         """
         block = self.trailer_block(sector)
         self._authenticate(block)
@@ -213,30 +207,21 @@ class MifareClassic(Card):
     ) -> None:
         """Rewrite a sector's keys and access bits. **This can brick the sector.**
 
-        Writing a trailer is the one operation on a Classic with no undo: a wrong key,
-        or an access condition that locks reads and writes behind a key you do not
-        have, leaves a sector no key will ever open again. Two things guard it.
+        A trailer write has no undo: a wrong key, or an access condition that locks
+        reads and writes behind a key you do not have, leaves a sector no key will open
+        again. Two guards:
 
-        *The keyword flag.* Nothing is written unless
-        ``i_understand_this_can_brick_the_sector=True`` is passed. It is deliberately
-        long and awkward, so a trailer write can never be a typo for
-        :meth:`write_block`.
-
-        *The dead-block refusal.* An ``access`` that would leave a **data** block
-        readable and writable by no key at all is rejected outright, flag or no flag:
-        that state is inert, has no legitimate use, and is exactly what a corrupted
-        sector lands in. A *frozen trailer* -- keys that can never change again -- is
-        **not** refused: that is a normal read-only configuration, and the keyword flag
-        is what acknowledges its permanence.
+        * Nothing is written unless ``i_understand_this_can_brick_the_sector=True``.
+        * An ``access`` leaving a *data* block readable and writable by no key is
+          refused outright, flag or not. A *frozen trailer* (keys that can never change
+          again) is allowed: that is a normal read-only configuration.
 
         After the write the trailer is re-read on a fresh authentication with the new
-        key A and the access bytes are compared, raising
-        :class:`WriteVerificationError` if they did not land. The bytes are asked of
-        the tag rather than inferred from a status word, because a Classic reports a
-        refused trailer write locally in a way that does not always reach the air.
+        key A and the access bytes compared, raising :class:`WriteVerificationError` if
+        they did not land.
 
-        :param access: the four blocks' conditions -- three data blocks then the
-            trailer itself. Constants live in :mod:`simple_nfc_tag.access_bits`.
+        :param access: the four blocks' conditions: three data blocks then the trailer.
+            Constants live in :mod:`simple_nfc_tag.access_bits`.
         :param gpb: the general-purpose byte (byte 9); ``0x00`` by default.
         """
         if not i_understand_this_can_brick_the_sector:
@@ -249,8 +234,8 @@ class MifareClassic(Card):
         if not 0 <= gpb <= 0xFF:
             raise ValueError(f"the general-purpose byte is one byte: {gpb}")
 
-        # encode_access_bits validates each condition; the dead-block check is the
-        # semantic guard on top of the structural one.
+        # encode_access_bits validates each condition; the dead-block check adds the
+        # semantic guard on top.
         access_bytes = access_bits.encode_access_bits(*access)
         dead = access_bits.first_dead_data_block(access)
         if dead is not None:
@@ -282,10 +267,9 @@ class MifareClassic(Card):
     ) -> None:
         """Set a sector's keys, leaving every block freely readable and writable.
 
-        A thin wrapper over :meth:`write_sector_trailer` with the transport access
-        condition: data blocks open to both keys, and key A able to rewrite the trailer
-        again. The safe default when all you want is to change the keys. The keyword
-        flag is still required, since the write is as irreversible as any other.
+        :meth:`write_sector_trailer` with the transport access condition: data blocks
+        open to both keys, key A able to rewrite the trailer again. The keyword flag is
+        still required.
         """
         self.write_sector_trailer(
             sector,
@@ -302,10 +286,9 @@ class MifareClassic(Card):
         """Re-read the access bytes on a fresh session and confirm they landed.
 
         The keys just changed, so the open authentication used the old ones. Key A can
-        read the access bits under every access condition, and it is never itself
-        readable, so proving the *new* key A and comparing bytes 6-9 is the one check
-        that works whatever was written. Only the access bytes and the GPB are checked:
-        the keys read back as zeros and cannot be verified from the tag.
+        read the access bits under every condition, so proving the new key A and
+        comparing bytes 6-9 works whatever was written. Only the access bytes and the
+        GPB are checked; the keys read back as zeros.
         """
         self._reader.reset_card_connection()
         self._session_restarted()
@@ -324,20 +307,13 @@ class MifareClassic(Card):
     def _authenticate(self, block: int) -> None:
         """Open the block's sector, unless it is already the open one.
 
-        **A Classic holds exactly one sector open at a time.** Authenticating sector 2
-        closes sector 1, and reading a block of sector 1 afterwards answers ``63 00``
-        until it is authenticated again -- so what is cached here is the single open
-        sector, not a set of them. A failed attempt closes the open sector too, which
-        is why the field is cleared before the first candidate is tried rather than
-        after the last one fails.
+        A Classic holds exactly one sector open at a time: authenticating sector 2
+        closes sector 1, and a later read of sector 1 answers ``63 00``. A failed
+        attempt closes the open sector too, so the cache is cleared before the first
+        candidate rather than after the last failure.
 
-        Caching it still earns its keep: a payload that fits in one sector costs one
-        authentication rather than one per block, which is three round trips saved for
-        every sector read.
-
-        (Measured on an ACR122U with a Classic 1K: a refused key does *not* deselect
-        the tag, so unlike the NTAG probing path this loop needs no session reset
-        between candidates.)
+        Measured on an ACR122U with a Classic 1K: a refused key does not deselect the
+        tag, so this loop needs no session reset between candidates.
         """
         sector = self.sector_of(block)
         if sector == self._open_sector:
@@ -362,17 +338,13 @@ class MifareClassic(Card):
         )
 
     def _session_restarted(self) -> None:
-        # A rebuilt RF session forgets which sector was open. The cache must not go on
-        # claiming otherwise, or the next read skips the authentication it needs and
-        # answers 63 00 for a reason that looks nothing like the real one.
+        # A rebuilt RF session forgets which sector was open; a stale cache would make
+        # the next read skip the authentication it needs and answer 63 00.
         self._open_sector = None
 
     @property
     def authenticated_sector(self) -> int | None:
-        """The one sector currently open, or ``None``.
-
-        Singular by necessity: see :meth:`_authenticate`.
-        """
+        """The one sector currently open, or ``None``. See :meth:`_authenticate`."""
         return self._open_sector
 
 

@@ -1,20 +1,18 @@
 """The :class:`Card` abstraction.
 
-Three tiers, deliberately named so the escape hatches are obvious:
+Three tiers:
 
-* **native** -- :meth:`Card.read_block` / :meth:`Card.write_block`, in whatever unit
-  the tag actually addresses (16-byte Classic blocks, 4-byte Ultralight pages);
-* **linear** -- :meth:`Card.read_bytes` / :meth:`Card.write_bytes`, one flat byte
-  range over user memory only. This is the seam codecs sit on, and the reason they
-  never have to know what a sector trailer is;
-* **high level** -- ``read()`` / ``write()``, which hand the linear tier to a codec.
-  Those arrive with the codecs.
+* **native**: :meth:`Card.read_block` / :meth:`Card.write_block`, in the unit the tag
+  addresses (16-byte Classic blocks, 4-byte Ultralight pages).
+* **linear**: :meth:`Card.read_bytes` / :meth:`Card.write_bytes`, one flat byte range
+  over user memory. The seam codecs sit on.
+* **high level**: :meth:`Card.read` / :meth:`Card.write`, which hand the linear tier
+  to a codec.
 
-The linear tier is implemented once, here, in terms of a subclass-supplied list of
-user blocks. That list is where every tag's quirks live: Ultralight starts at page 4,
-Classic starts at block 4 *and* skips a trailer every fourth block. Expressing the
-layout as data rather than as arithmetic is what keeps a trailer from ever being
-written by accident.
+The linear tier is implemented once here, over a subclass-supplied list of user
+blocks. That list carries each tag's layout: Ultralight starts at page 4, Classic
+starts at block 4 and skips a trailer every fourth block. Layout as data rather than
+arithmetic keeps a trailer out of reach.
 """
 
 from __future__ import annotations
@@ -37,9 +35,8 @@ __all__ = ["Card"]
 class Card(abc.ABC):
     """A tag on a reader.
 
-    A ``Card`` is scoped to one card presence: it holds no state that survives the tag
-    leaving the field, and the reader hands out a fresh one when a different UID shows
-    up.
+    Scoped to one card presence: no state survives the tag leaving the field, and the
+    reader hands out a fresh instance when a different UID shows up.
     """
 
     #: Human-readable product name, e.g. ``NTAG213``.
@@ -75,9 +72,8 @@ class Card(abc.ABC):
     def probe(cls, reader: Reader, atr: AtrInfo, uid: bytes) -> Card | None:
         """Claim the tag in the field, or return ``None`` to let another driver try.
 
-        Called by :func:`simple_nfc_tag.cards.identify` in registration order. A driver
-        that recognises the tag returns a constructed instance; the default is to claim
-        nothing.
+        Called by :func:`simple_nfc_tag.cards.identify` in registration order. The
+        default claims nothing.
         """
         return None
 
@@ -95,9 +91,8 @@ class Card(abc.ABC):
     def _user_blocks(self) -> Sequence[int]:
         """Absolute addresses of the blocks holding user data, in order.
 
-        Reserved blocks -- Classic's block 0 and its sector trailers, Ultralight's
-        lock and OTP pages -- are simply absent from this list, so no arithmetic in
-        the linear tier can reach them.
+        Reserved blocks (Classic's block 0 and sector trailers, Ultralight's lock and
+        OTP pages) are absent from this list, so the linear tier cannot reach them.
         """
 
     # ------------------------------------------------------------------- linear
@@ -106,7 +101,7 @@ class Card(abc.ABC):
         """Read ``length`` bytes from user memory, starting at ``offset``.
 
         Offsets are into a flat user-memory space: byte 0 is the first byte the caller
-        owns, whatever its physical address happens to be.
+        owns, whatever its physical address.
         """
         if offset < 0:
             raise ValueError(f"offset cannot be negative: {offset}")
@@ -128,15 +123,13 @@ class Card(abc.ABC):
     def write_bytes(self, offset: int, data: bytes, verify: bool = True) -> None:
         """Write ``data`` into user memory at ``offset``.
 
-        Writes are block-granular on the wire, so a write that starts or ends mid-block
-        reads the affected block first and merges -- the read-modify-write an Ultralight
-        needs for any payload that is not a multiple of its 4-byte page.
+        Writes are block-granular on the wire, so a write starting or ending mid-block
+        reads the affected block first and merges.
 
         :param verify: read the bytes back afterwards and compare, raising
-            :class:`WriteVerificationError` if the tag does not hold what was sent.
-            On by default, because a refused write is **not** reliably reported: on an
-            NTAG it answers ``90 00`` and quietly changes nothing. Pass ``False`` to
-            skip the read-back where the round trips matter more than the certainty.
+            :class:`WriteVerificationError` if the tag does not hold what was sent. On
+            by default: a refused write is not reliably reported, and on an NTAG it
+            answers ``90 00`` and changes nothing. Pass ``False`` to skip the read-back.
         """
         if offset < 0:
             raise ValueError(f"offset cannot be negative: {offset}")
@@ -177,9 +170,8 @@ class Card(abc.ABC):
         >>> tag.write(["ABC123", 42])          # doctest: +SKIP
         >>> tag.write(b"raw bytes", format="raw")   # doctest: +SKIP
 
-        The payload is checked against the tag's capacity before a single byte is sent,
-        so a value that does not fit leaves what is already on the tag untouched rather
-        than half-overwritten.
+        Capacity is checked before the first byte is sent, so a payload that does not
+        fit leaves the tag untouched.
         """
         payload = codec_for(format).encode(value)
         if len(payload) > self.user_size:
@@ -189,11 +181,10 @@ class Card(abc.ABC):
     def read(self, format: str | None = None) -> Any:
         """Read the tag's payload.
 
-        With no ``format``, the format is worked out from what is on the tag: a
-        proprietary TLV block decodes as ``tlv``, an NDEF message raises
-        :class:`NdefNotSupported` rather than producing nonsense, and anything else
-        raises :class:`UnknownFormat`. ``raw`` is never detected -- it carries nothing
-        to detect -- so reading raw bytes means asking for them by name.
+        With no ``format``, it is detected from what is on the tag: a proprietary TLV
+        block decodes as ``tlv``, an NDEF message raises :class:`NdefNotSupported`, and
+        anything else raises :class:`UnknownFormat`. ``raw`` carries nothing to detect,
+        so it has to be named.
         """
         cursor = ByteCursor(self.read_bytes, self.user_size, chunk=self.block_size)
         if format is not None:
@@ -205,21 +196,16 @@ class Card(abc.ABC):
     def _verify_write(self, offset: int, data: bytes) -> None:
         """Read back what was just written and compare it, byte for byte.
 
-        Comparing bytes rather than reading a status word is deliberate. The obvious
-        cheaper guard -- one read after the run, treating ``63 00`` as "something
-        failed" -- only works because a refusal deselects an NTAG, and nothing
-        deselects a Classic: there the probe would answer ``90 00`` unconditionally
-        and report all-clear by construction. Asking the tag what it actually holds
-        depends on none of that, and is the only form that can say *which* bytes are
-        wrong.
+        Status words are not enough: a refusal deselects an NTAG but not a Classic, so
+        a single probe read after the run would report all-clear on a Classic by
+        construction. Comparing bytes also names which bytes are wrong.
         """
         try:
             actual = self.read_bytes(offset, len(data))
         except ApduError:
             # On an NTAG the refusal that lost the write also deselected the tag, so
-            # this read is the command that trips over it. Rebuild the session and ask
-            # again: what the caller needs to hear is which bytes are wrong, not that
-            # a read failed.
+            # this read trips over it. Rebuild the session and ask again, so the caller
+            # hears which bytes are wrong rather than that a read failed.
             if not self._reader.reset_card_connection():
                 raise
             self._session_restarted()
@@ -231,16 +217,14 @@ class Card(abc.ABC):
     def _session_restarted(self) -> None:  # noqa: B027 - an optional hook, not abstract
         """Drop anything cached that belonged to the RF session, not to the silicon.
 
-        A no-op here, since the base card caches nothing per session; a Classic
-        overrides it, because a rebuilt session forgets which sector was open.
+        A no-op here; a Classic overrides it, since a rebuilt session forgets which
+        sector was open.
         """
-
 
     def _read_run(self, blocks: Sequence[int]) -> bytes:
         """Read a run of blocks, one at a time.
 
-        Overridden where the reader can fetch several blocks per APDU -- an Ultralight
-        read returns four pages whether you want them or not, and using that turns a
-        16-byte read into one exchange instead of four.
+        Overridden where the reader fetches several blocks per APDU: an Ultralight read
+        returns four pages regardless, so a 16-byte read costs one exchange, not four.
         """
         return b"".join(self.read_block(block) for block in blocks)

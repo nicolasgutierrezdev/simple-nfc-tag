@@ -3,12 +3,12 @@
 Codecs sit on the linear tier of a card and never see a block, a page or a sector. Two
 ship with v1:
 
-* ``tlv`` -- a sequence of typed Python values, self-describing, the default;
-* ``raw`` -- bytes verbatim, for layouts decided elsewhere.
+* ``tlv``: a sequence of typed Python values, self-describing. The default.
+* ``raw``: bytes verbatim, for layouts decided elsewhere.
 
-An NDEF codec is designed for but not implemented. It drops in as another codec rather
-than a rewrite, and tags written by v1 stay readable when it lands, because a read with
-no ``format=`` dispatches on what is actually on the tag.
+An NDEF codec is designed for but not implemented. It drops in as another codec, and
+tags written by v1 stay readable, because a read with no ``format=`` dispatches on
+what is on the tag.
 """
 
 from __future__ import annotations

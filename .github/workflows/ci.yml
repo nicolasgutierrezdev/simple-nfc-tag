@@ -21,7 +21,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      # pyscard has no manylinux wheels: it is built from source here.
+      # pyscard has no manylinux wheels; it is built from source here.
       - run: sudo apt-get update && sudo apt-get install -y swig libpcsclite-dev
       - run: uv sync
       - run: uv run ruff check .
@@ -29,11 +29,9 @@ jobs:
       - run: uv run mypy src
 
   test:
-    # No reader is ever attached to a runner: the suite must pass without one.
-    #
-    # Floor and current on Windows, the primary platform for ACR122U users, plus
-    # both ends on Linux and a macOS leg. pyscard ships wheels for every one of
-    # these except Linux, which has no manylinux wheels and builds from source.
+    # No reader is attached to a runner: the suite must pass without one.
+    # Floor and current on Windows plus both ends on Linux and a macOS leg.
+    # pyscard ships wheels for all of these except Linux, which builds from source.
     strategy:
       fail-fast: false
       matrix:
@@ -57,9 +55,8 @@ jobs:
       - run: uv run --python ${{ matrix.python }} pytest
 
   package:
-    # Build the artifact and run the suite against the *installed wheel*, so a
-    # missing subpackage or a py.typed left out of the build fails here rather than
-    # after publishing.
+    # Run the suite against the installed wheel, so a missing subpackage or a
+    # py.typed left out of the build fails here rather than after publishing.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -78,8 +75,8 @@ jobs:
           uv venv .wheel-env
           uv pip install --python .wheel-env/bin/python dist/*.whl pytest
       - name: Run the suite against the installed wheel
-        # From tests/ so the source tree is not on sys.path and the import can only
-        # resolve to the installed distribution.
+        # From tests/ so the source tree is off sys.path and the import resolves to
+        # the installed distribution.
         run: cd tests && ../.wheel-env/bin/python -m pytest -q -p no:cacheprovider .
       - uses: actions/upload-artifact@v4
         with:
