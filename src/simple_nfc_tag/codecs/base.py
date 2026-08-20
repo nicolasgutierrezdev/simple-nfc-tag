@@ -146,8 +146,26 @@ class Codec(Protocol):
 _CODECS: dict[str, Codec] = {}
 
 
+#: What :func:`register_codec` insists on before a codec enters the registry.
+_REQUIRED = ("name", "encode", "decode", "detect")
+
+
 def register_codec(codec: Codec) -> Codec:
-    """Add a codec under its ``name``."""
+    """Add a codec under its ``name``.
+
+    The shape is checked here rather than at first use. A codec missing ``detect``
+    registers fine and then breaks every later ``read()`` with no ``format=`` — on
+    tags it has nothing to do with — as an ``AttributeError`` from inside
+    :func:`detect_codec`, a long way from the registration that caused it.
+    """
+    missing = [attr for attr in _REQUIRED if not hasattr(codec, attr)]
+    if missing:
+        raise TypeError(
+            f"{type(codec).__name__} is not a codec: missing {', '.join(missing)}. "
+            "A codec needs a 'name' and encode/decode/detect methods."
+        )
+    if not isinstance(codec.name, str) or not codec.name:
+        raise TypeError(f"a codec's name must be a non-empty string, got {codec.name!r}")
     if codec.name in _CODECS:
         raise ValueError(f"a codec named {codec.name!r} is already registered")
     _CODECS[codec.name] = codec

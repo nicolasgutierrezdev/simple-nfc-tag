@@ -1,0 +1,130 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  # Dry runs: build and publish to TestPyPI only, no tag required.
+  workflow_dispatch:
+    inputs:
+      testpypi_only:
+        description: "Stop after TestPyPI"
+        type: boolean
+        default: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  UV_FROZEN: "1"
+
+jobs:
+  build:
+    # Same checks as CI's package job: a release must not be the first time the
+    # wheel is exercised.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      # pyscard has no manylinux wheels; it is built from source here.
+      - run: sudo apt-get update && sudo apt-get install -y swig libpcsclite-dev
+
+      - name: Confirm the tag matches the packaged version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/simple_nfc_tag/__init__.py)"
+          echo "tag $tag, __version__ $version"
+          test "$tag" = "$version"
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Check the PyPI page renders
+        run: uvx twine check --strict dist/*
+
+      - name: Confirm py.typed made it into the wheel
+        run: unzip -l dist/*.whl | grep -q 'simple_nfc_tag/py.typed'
+
+      - name: Install the wheel into a clean environment
+        run: |
+          uv venv .wheel-env
+          uv pip install --python .wheel-env/bin/python dist/*.whl pytest
+
+      - name: Run the suite against the installed wheel
+        # From tests/ so the source tree is off sys.path and the import resolves
+        # to the installed distribution.
+        run: cd tests && ../.wheel-env/bin/python -m pytest -q -p no:cacheprovider .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  testpypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/simple-nfc-tag/
+    permissions:
+      # Trusted Publishing (OIDC). No API token is stored anywhere.
+      id-token: write
+    steps:
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      # --check-url skips files the index already has, so a re-run is a no-op
+      # instead of a duplicate-file error.
+      - run: >
+          uv publish
+          --publish-url https://test.pypi.org/legacy/
+          --check-url https://test.pypi.org/simple/
+          --trusted-publishing always
+          dist/*
+
+  pypi:
+    # Gated behind the `pypi` environment: put required reviewers on it, so the
+    # TestPyPI page can be inspected before this job is allowed to run.
+    needs: testpypi
+    if: startsWith(github.ref, 'refs/tags/v') && !inputs.testpypi_only
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/simple-nfc-tag/
+    permissions:
+      id-token: write
+    steps:
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - run: >
+          uv publish
+          --check-url https://pypi.org/simple/
+          --trusted-publishing always
+          dist/*
+
+  github-release:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - run: >
+          gh release create "$GITHUB_REF_NAME"
+          --title "$GITHUB_REF_NAME"
+          --notes "See the [CHANGELOG](https://github.com/$GITHUB_REPOSITORY/blob/main/CHANGELOG.md)."
+          dist/*
+        env:
+          GH_TOKEN: ${{ github.token }}

@@ -75,14 +75,28 @@ class ACR122U(PCSCReader):
         Persists until changed, but has to be sent over a card connection: doing it
         with an empty field needs ``SCardControl`` escape commands, which on Windows
         require a per-reader registry opt-in.
+
+        Like :meth:`set_led`, the reply carries the resulting state in ``SW2``:
+        enabling the buzzer answers ``90 FF``, disabling it ``90 00``.
         """
-        self.transmit(bytes([0xFF, 0x00, 0x52, 0xFF if enabled else 0x00, 0x00]))
+        command = bytes([0xFF, 0x00, 0x52, 0xFF if enabled else 0x00, 0x00])
+        _data, sw1, sw2 = self.transmit_raw(command)
+        if sw1 != 0x90:
+            raise ApduError(sw1, sw2, command)
 
     def set_led(self, red: bool = False, green: bool = False) -> None:
-        """Set the two status LEDs, leaving blinking and the buzzer alone."""
+        """Set the two status LEDs, leaving blinking and the buzzer alone.
+
+        This command reports the resulting LED state in the ``SW2`` position, so
+        ``90 01`` after lighting the red LED is success, not an error. Only ``SW1``
+        says whether the reader accepted it.
+        """
         # Bits 0-1 are the final state, bits 2-3 mask which of the two we are setting.
         state = (0x01 if red else 0x00) | (0x02 if green else 0x00) | 0x0C
-        self.transmit(bytes([0xFF, 0x00, 0x40, state, 0x04, 0x00, 0x00, 0x00, 0x00]))
+        command = bytes([0xFF, 0x00, 0x40, state, 0x04, 0x00, 0x00, 0x00, 0x00])
+        _data, sw1, sw2 = self.transmit_raw(command)
+        if sw1 != 0x90:
+            raise ApduError(sw1, sw2, command)
 
     # ------------------------------------------------------------------- vendor
 

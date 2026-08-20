@@ -10,9 +10,9 @@ protocol details.*
 [![Python versions](https://img.shields.io/pypi/pyversions/simple-nfc-tag.svg)](https://pypi.org/project/simple-nfc-tag/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> **Status: in development.** Read and write are verified against real hardware (ACR122U,
-> NTAG213, MIFARE Classic 1K), but nothing is released yet and the API can still move. `0.0.1`
-> on PyPI is a name placeholder with no functionality in it.
+> **This package is still experimental.** Read and write are verified against real hardware
+> (ACR122U, NTAG213, MIFARE Classic 1K), but the API and the data layout written to tags can
+> still change between releases.
 
 ## Install
 

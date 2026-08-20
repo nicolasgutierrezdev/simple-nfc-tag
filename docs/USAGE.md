@@ -253,8 +253,12 @@ tag.write("hello", format="mine")
 
 `known_codecs()` lists them, `codec_for(name)` looks one up.
 
-The wire format is public API: after v1.0 the `0xFD` framing and the inner type ids are frozen.
-Caller-registered inner types take ids `0x10`-`0x7F`.
+- `register_codec()` checks the shape: a codec missing `detect` is refused there rather than
+  breaking a later `read()` with no `format=`.
+- A payload whose first non-zero byte is `0x03` is claimed as NDEF before any codec is
+  consulted, so a custom magic starting with `0x03` can only be read with `format=` named.
+- A custom codec writes from byte 0 and replaces the TLV stream. Other NFC software reading
+  the tag sees an unrecognised payload, not an NDEF message.
 
 ## Errors
 

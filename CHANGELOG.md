@@ -30,6 +30,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 - `reset_card_connection()`, for the recovery a tag needs after refusing a command: it stops
   answering until it is reselected.
 - Packaging and CI: build, `twine check`, and the suite run against the installed wheel.
+- Release workflow on tag `v*`: rebuilds and re-checks the artifacts, publishes to TestPyPI and
+  then, behind an environment gate, to PyPI, both with Trusted Publishing (no stored token), and
+  attaches the artifacts to a GitHub release. Refuses to run if the tag and `__version__`
+  disagree.
 - One length rule for the whole wire format, the NFC Forum Type-2 one, used by the outer TLV
   blocks and the typed values inside them. The inner tier was specified as BER (ISO 7816-4) and
   unified before release.
@@ -80,7 +84,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Planned
 
-- The release workflow and the first tagged release
+- The first tagged release
 
 ## [0.0.1] - 2026-08-18
 

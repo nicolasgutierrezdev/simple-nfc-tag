@@ -71,9 +71,16 @@ class TestPeripherals:
         assert reader.last_sent == bytes.fromhex("FF00520000")
 
     def test_buzzer_on(self):
-        reader = StubACR122U()
+        # The reader answers 90 FF here: SW2 is the resulting buzzer state, not an
+        # error. Reading it as one made enabling the buzzer always raise.
+        reader = StubACR122U([(b"", 0x90, 0xFF)])
         reader.set_buzzer(True)
         assert reader.last_sent == bytes.fromhex("FF0052FF00")
+
+    def test_buzzer_failure_is_still_raised(self):
+        reader = StubACR122U([(b"", 0x63, 0x00)])
+        with pytest.raises(ApduError):
+            reader.set_buzzer(False)
 
     @pytest.mark.parametrize(
         ("red", "green", "state"),
@@ -83,6 +90,18 @@ class TestPeripherals:
         reader = StubACR122U()
         reader.set_led(red=red, green=green)
         assert reader.last_sent == bytes([0xFF, 0x00, 0x40, state, 0x04, 0, 0, 0, 0])
+
+    def test_led_status_word_carries_the_resulting_state(self):
+        # Captured from a real ACR122U: lighting the red LED answers 90 01, where 01
+        # is the LED state. Treating SW2 as an error code fails every colour but off.
+        reader = StubACR122U([(b"", 0x90, 0x01)])
+        reader.set_led(red=True)
+        assert reader.last_sent == bytes.fromhex("FF00400D0400000000")
+
+    def test_led_failure_is_still_raised(self):
+        reader = StubACR122U([(b"", 0x63, 0x00)])
+        with pytest.raises(ApduError):
+            reader.set_led(green=True)
 
     def test_firmware_version_reads_the_status_word_as_payload(self):
         # Captured from a real ACR122U: the last two characters of the string arrive

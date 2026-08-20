@@ -5,7 +5,15 @@ from __future__ import annotations
 import pytest
 
 from simple_nfc_tag.codecs import framing
-from simple_nfc_tag.codecs.base import ByteCursor, codec_for, decode_auto, known_codecs
+from simple_nfc_tag.codecs.base import (
+    _CODECS,
+    ByteCursor,
+    codec_for,
+    decode_auto,
+    detect_codec,
+    known_codecs,
+    register_codec,
+)
 from simple_nfc_tag.codecs.raw import RawCodec
 from simple_nfc_tag.codecs.tlv import CompactTlvCodec
 from simple_nfc_tag.codecs.values import U16
@@ -235,6 +243,90 @@ class TestRaw:
         # Otherwise raw would win every auto-detected read.
         assert not RAW.detect(b"\xfd\x0b")
         assert not RAW.detect(b"anything")
+
+
+class _GoodCodec:
+    """The smallest thing that satisfies the codec protocol."""
+
+    def __init__(self) -> None:
+        self.name = "good"
+
+    def encode(self, value):
+        return b"GOOD" + str(value).encode()
+
+    def decode(self, cursor):
+        cursor.skip(4)
+        return cursor.read_rest().rstrip(b"\x00").decode()
+
+    def detect(self, head):
+        return head.startswith(b"GOOD")
+
+
+class _NoDetect:
+    """A plausible mistake: the two obvious methods, but not the third."""
+
+    name = "nodetect"
+
+    def encode(self, value):
+        return b""
+
+    def decode(self, cursor):
+        return None
+
+
+class _Nameless:
+    """Methods but no name, so the registry has nothing to file it under."""
+
+    def encode(self, value):
+        return b""
+
+    def decode(self, cursor):
+        return None
+
+    def detect(self, head):
+        return False
+
+
+class TestRegistration:
+    """What ``register_codec`` accepts. A bad codec must fail here, not later."""
+
+    @pytest.fixture(autouse=True)
+    def _restore_registry(self):
+        saved = known_codecs()
+        yield
+        _CODECS.clear()
+        _CODECS.update(saved)
+
+    def test_a_well_formed_codec_registers(self):
+        register_codec(_GoodCodec())
+        assert codec_for("good").name == "good"
+
+    def test_a_codec_missing_detect_is_refused(self):
+        # Registering it would work and then break every later read() with no
+        # format=, on tags this codec has nothing to do with.
+        with pytest.raises(TypeError, match="missing detect"):
+            register_codec(_NoDetect())
+        assert detect_codec(b"SNS1") is None
+
+    def test_a_codec_missing_a_name_is_refused(self):
+        with pytest.raises(TypeError, match="missing name"):
+            register_codec(_Nameless())
+
+    def test_an_empty_name_is_refused(self):
+        codec = _GoodCodec()
+        codec.name = ""
+        with pytest.raises(TypeError, match="non-empty string"):
+            register_codec(codec)
+
+    def test_a_duplicate_name_is_refused(self):
+        register_codec(_GoodCodec())
+        with pytest.raises(ValueError, match="already registered"):
+            register_codec(_GoodCodec())
+
+    def test_a_registered_codec_is_auto_detected(self):
+        register_codec(_GoodCodec())
+        cursor = cursor_over(b"GOODhello", size=32)
+        assert decode_auto(cursor) == "hello"
 
 
 class TestRegistryAndDispatch:
