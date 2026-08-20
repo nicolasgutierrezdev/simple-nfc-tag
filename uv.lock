@@ -969,7 +969,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [{ name = "pyscard", specifier = ">=2.0,<3" }]
-provides-extras = ["ndef"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -26,10 +26,6 @@ classifiers = [
 ]
 dependencies = ["pyscard>=2.0,<3"]
 
-[project.optional-dependencies]
-# Reserved so the future NDEF codec is an additive change.
-ndef = []
-
 [dependency-groups]
 dev = ["pytest>=7", "ruff", "mypy", "twine>=5"]
 

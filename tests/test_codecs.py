@@ -256,7 +256,7 @@ class TestRegistryAndDispatch:
 
     def test_auto_decode_names_ndef(self):
         cursor = cursor_over(b"\x03\x03\xd0\x00\x00\xfe", size=16)
-        with pytest.raises(NdefNotSupported, match="not implemented"):
+        with pytest.raises(NdefNotSupported, match="not supported"):
             decode_auto(cursor)
 
     def test_auto_decode_on_a_blank_tag(self):

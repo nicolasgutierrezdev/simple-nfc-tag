@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-label="simple-nfc-tag - tag-agnostic NFC data storage over PC/SC">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="55%" stop-color="#111a2b"/>
+      <stop offset="100%" stop-color="#0b1b28"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#2dd4bf"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="300" rx="12" fill="url(#bg)"/>
+  <rect x="48" y="86" width="5" height="128" rx="2.5" fill="url(#accent)"/>
+
+  <!-- NFC waves emanating from the tag -->
+  <g fill="none" stroke="url(#accent)" stroke-linecap="round">
+    <path d="M955 106.7 A50 50 0 0 1 955 193.3" stroke-width="9" opacity="0.95"/>
+    <path d="M977.5 67.7 A95 95 0 0 1 977.5 232.3" stroke-width="8" opacity="0.7"/>
+    <path d="M1000 28.8 A140 140 0 0 1 1000 271.2" stroke-width="7" opacity="0.45"/>
+    <path d="M1022.5 -10.2 A185 185 0 0 1 1022.5 310.2" stroke-width="6" opacity="0.22"/>
+  </g>
+  <rect x="878" y="118" width="44" height="64" rx="8" fill="url(#accent)" opacity="0.95"/>
+  <rect x="890" y="134" width="20" height="32" rx="4" fill="#0d1117" opacity="0.85"/>
+
+  <text x="82" y="140" fill="#e6edf3" font-family="Consolas, 'DejaVu Sans Mono', Menlo, monospace" font-size="60" font-weight="700">simple-nfc-tag</text>
+  <text x="84" y="186" fill="#9aa7b6" font-family="'Segoe UI', 'DejaVu Sans', Verdana, sans-serif" font-size="25">Tag-agnostic NFC data storage over PC/SC</text>
+  <text x="84" y="224" fill="#5eead4" font-family="'Segoe UI', 'DejaVu Sans', Verdana, sans-serif" font-size="17" letter-spacing="1.6">MIFARE CLASSIC  &#183;  ULTRALIGHT  &#183;  NTAG21x</text>
+</svg>

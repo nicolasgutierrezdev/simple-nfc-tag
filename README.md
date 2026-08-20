@@ -1,15 +1,31 @@
 # simple-nfc-tag
 
-A tag-agnostic NFC data storage library built on PC/SC, abstracting away reader, tag and
-protocol details.
+![simple-nfc-tag banner](https://raw.githubusercontent.com/nicolasgutierrezdev/simple-nfc-tag/main/assets/banner.svg)
 
-Extracted from a private access-control project and refactored into a package: the original was
-a single read-only script for one fixed payload that swallowed every error. What survived is the
-hardware knowledge; the API, the write path, the codecs and the hardware-free test path are new.
+*A tag-agnostic NFC data storage library built on PC/SC, abstracting away reader, tag and
+protocol details.*
+
+[![CI](https://github.com/nicolasgutierrezdev/simple-nfc-tag/actions/workflows/ci.yml/badge.svg)](https://github.com/nicolasgutierrezdev/simple-nfc-tag/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/simple-nfc-tag.svg)](https://pypi.org/project/simple-nfc-tag/)
+[![Python versions](https://img.shields.io/pypi/pyversions/simple-nfc-tag.svg)](https://pypi.org/project/simple-nfc-tag/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 > **Status: in development.** Read and write are verified against real hardware (ACR122U,
 > NTAG213, MIFARE Classic 1K), but nothing is released yet and the API can still move. `0.0.1`
 > on PyPI is a name placeholder with no functionality in it.
+
+## Install
+
+```bash
+uv add simple-nfc-tag
+```
+
+```bash
+pip install simple-nfc-tag
+```
+
+Python 3.10+. Depends on `pyscard`. No driver swap: uses the PC/SC stack already present on
+Windows and macOS, and `pcscd` on Linux.
 
 ## Usage
 
@@ -30,36 +46,29 @@ read-modify-write, Classic authentication and payload framing are handled intern
 Values are typed automatically: `str`, `int`, `float`, `bool`, `bytes`, anything else as JSON.
 `read()` with no `format=` detects what is on the tag.
 
-## Install
-
-```bash
-pip install simple-nfc-tag     # requires Python 3.10+, pyscard
-```
-
-No driver swap. Uses the PC/SC stack already present on Windows, macOS and Linux (`pcscd`).
-
-## vs nfcpy
-
-| |  simple-nfc-tag | nfcpy |
-|---|---|---|
-| Transport | PC/SC | libusb / serial, direct to PN53x |
-| Windows | vendor driver as-is | needs the PC/SC driver replaced |
-| Readers | any PC/SC reader | PN53x-based only |
-| API level | values (`write([...])` / `read()`) | NDEF records, protocol operations |
-| Tag differences | hidden | exposed per tag type |
-| Scope | storage on tags | + peer-to-peer, card emulation |
-
-Use nfcpy for NFC protocol work. Use this to store data.
-
 ## Features
 
 - **Readers**: generic PC/SC, ACR122U (buzzer, LED, PN532 passthrough), in-memory fake
 - **Tags**: MIFARE Classic 1K/4K, Ultralight, NTAG213/215/216, identified automatically
-- **Formats**: compact TLV and raw bytes; NDEF comes later as an additive codec
+- **Formats**: compact TLV of typed values, and raw bytes
 - **Auth**: MIFARE Classic keys and trailers, NTAG21x `PWD_AUTH` and password setting
 - **Monitor**: background thread with per-UID debounce, blocking in the PC/SC driver
 - **Write verification**: on by default; a refused write reports `SW=9000` on an NTAG
 - **Typed**: `py.typed`, no bare `except`, every non-`90 00` answer raises `ApduError`
+
+## vs nfcpy
+
+| | simple-nfc-tag | [nfcpy](https://nfcpy.readthedocs.io/en/latest/overview.html#supported-devices) |
+|---|---|---|
+| Transport | PC/SC | libusb or serial, direct to the chip |
+| Readers | any PC/SC reader | a fixed device list: PN531/PN532/PN533, RC-S956, Port100 |
+| ACR122U | primary target, verified | supported, but "it is not recommended to buy this device for use with *nfcpy*" |
+| Tags | MIFARE Classic 1K/4K, Ultralight, NTAG213/215/216 | NFC Forum Type 1-4 |
+| API level | values (`write([...])` / `read()`) | NDEF records, protocol operations |
+| Tag differences | hidden | exposed per tag type |
+| Scope | storage on tags | + peer-to-peer, card emulation, connection handover |
+
+Use nfcpy for NFC protocol work. Use this to store data.
 
 ## Testing without hardware
 
@@ -80,8 +89,6 @@ refusing a command.
 
 - [USAGE.md](https://github.com/nicolasgutierrezdev/simple-nfc-tag/blob/main/docs/USAGE.md):
   monitors, Classic keys and trailers, NTAG passwords, raw bytes, custom codecs, errors
-- [PLAN.md](https://github.com/nicolasgutierrezdev/simple-nfc-tag/blob/main/docs/PLAN.md):
-  architecture and wire format
 - [examples/](https://github.com/nicolasgutierrezdev/simple-nfc-tag/tree/main/examples):
   `roundtrip.py` (manual hardware check), `monitor.py`, `classic_keys.py`
 

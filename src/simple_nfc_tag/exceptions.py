@@ -176,10 +176,10 @@ class UnknownFormat(FormatError):
 
 
 class NdefNotSupported(FormatError):
-    """The tag holds an NDEF message, which v1 deliberately does not decode."""
+    """The tag holds an NDEF message, which this package does not decode."""
 
     def __init__(self) -> None:
         super().__init__(
-            "tag contains an NDEF message (TLV 0x03); NDEF decoding is not implemented yet. "
+            "tag contains an NDEF message (TLV 0x03); NDEF decoding is not supported. "
             "Use format='raw' to get the bytes verbatim."
         )

@@ -80,7 +80,6 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Planned
 
-- An NDEF codec, as an additive change
 - The release workflow and the first tagged release
 
 ## [0.0.1] - 2026-08-18
