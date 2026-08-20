@@ -44,5 +44,3 @@ Desktop.ini
 scratch/
 *.local.py
 
-# Local working material, deliberately not published
-docs/
